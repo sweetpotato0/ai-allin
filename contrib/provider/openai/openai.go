@@ -8,6 +8,7 @@ import (
 	"github.com/openai/openai-go"
 	"github.com/openai/openai-go/option"
 	"github.com/openai/openai-go/packages/param"
+	"github.com/sweetpotato0/ai-allin/agent"
 	"github.com/sweetpotato0/ai-allin/message"
 )
 
@@ -150,4 +151,121 @@ func (p *Provider) SetMaxTokens(max int64) {
 // SetModel updates the model
 func (p *Provider) SetModel(model string) {
 	p.config.Model = model
+}
+
+// GenerateStream implements agent.StreamLLMClient interface for streaming responses
+func (p *Provider) GenerateStream(ctx context.Context, messages []*message.Message, tools []map[string]interface{}, callback agent.StreamCallback) (*message.Message, error) {
+	// Convert messages to OpenAI format
+	openAIMessages := make([]openai.ChatCompletionMessageParamUnion, 0, len(messages))
+	for _, msg := range messages {
+		switch msg.Role {
+		case message.RoleSystem:
+			openAIMessages = append(openAIMessages, openai.SystemMessage(msg.Content))
+		case message.RoleUser:
+			openAIMessages = append(openAIMessages, openai.UserMessage(msg.Content))
+		case message.RoleAssistant:
+			openAIMessages = append(openAIMessages, openai.AssistantMessage(msg.Content))
+		case message.RoleTool:
+			openAIMessages = append(openAIMessages, openai.ToolMessage(msg.ToolID, msg.Content))
+		}
+	}
+
+	// Build chat completion request with streaming
+	params := openai.ChatCompletionNewParams{
+		Messages: openAIMessages,
+		Model:    openai.ChatModelGPT4oMini,
+	}
+
+	// Set temperature if provided
+	if p.config.Temperature > 0 {
+		params.Temperature = param.NewOpt(p.config.Temperature)
+	}
+
+	// Set max tokens if provided
+	if p.config.MaxTokens > 0 {
+		params.MaxCompletionTokens = param.NewOpt(p.config.MaxTokens)
+	}
+
+	// Add tools if provided
+	if len(tools) > 0 {
+		openAITools := make([]openai.ChatCompletionToolParam, 0, len(tools))
+		for _, tool := range tools {
+			// Convert tool schema
+			toolJSON, err := json.Marshal(tool)
+			if err != nil {
+				return nil, fmt.Errorf("failed to marshal tool: %w", err)
+			}
+
+			var toolParam openai.ChatCompletionToolParam
+			if err := json.Unmarshal(toolJSON, &toolParam); err != nil {
+				return nil, fmt.Errorf("failed to unmarshal tool param: %w", err)
+			}
+
+			openAITools = append(openAITools, toolParam)
+		}
+		params.Tools = openAITools
+	}
+
+	// Create streaming client
+	stream := p.client.Chat.Completions.NewStreaming(ctx, params)
+	defer stream.Close()
+
+	var responseText string
+	var accumulatedToolCalls []message.ToolCall
+
+	// Process the stream
+	for stream.Next() {
+		event := stream.Current()
+
+		if len(event.Choices) > 0 {
+			choice := event.Choices[0]
+
+			// Handle text delta
+			if choice.Delta.Content != "" {
+				responseText += choice.Delta.Content
+				// Call the callback with the token
+				if err := callback(choice.Delta.Content); err != nil {
+					stream.Close()
+					return nil, fmt.Errorf("callback error: %w", err)
+				}
+			}
+
+			// Handle tool calls (if streaming provides them)
+			if len(choice.Delta.ToolCalls) > 0 {
+				for _, tc := range choice.Delta.ToolCalls {
+					idx := tc.Index
+					// Ensure we have enough space
+					for len(accumulatedToolCalls) <= int(idx) {
+						accumulatedToolCalls = append(accumulatedToolCalls, message.ToolCall{})
+					}
+					// Update tool call details
+					if tc.ID != "" {
+						accumulatedToolCalls[idx].ID = tc.ID
+					}
+					if tc.Function.Name != "" {
+						accumulatedToolCalls[idx].Name = tc.Function.Name
+					}
+					if tc.Function.Arguments != "" {
+						// Parse arguments
+						var args map[string]interface{}
+						if err := json.Unmarshal([]byte(tc.Function.Arguments), &args); err == nil {
+							accumulatedToolCalls[idx].Args = args
+						}
+					}
+				}
+			}
+		}
+	}
+
+	if err := stream.Err(); err != nil {
+		return nil, fmt.Errorf("OpenAI streaming error: %w", err)
+	}
+
+	// Create response message
+	responseMsg := message.NewMessage(message.RoleAssistant, responseText)
+	if len(accumulatedToolCalls) > 0 {
+		responseMsg.ToolCalls = accumulatedToolCalls
+	}
+
+	return responseMsg, nil
 }
