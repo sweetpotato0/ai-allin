@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sort"
+	"strings"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -112,7 +114,25 @@ func (s *RedisStore) SearchMemory(ctx context.Context, query string) ([]*memory.
 		memories = append(memories, &mem)
 	}
 
-	// TODO: Implement proper search/filtering based on query
+	// Filter by query if provided
+	if query != "" {
+		lowerQuery := strings.ToLower(query)
+		filtered := make([]*memory.Memory, 0)
+		for _, mem := range memories {
+			// Search in content and ID (case-insensitive)
+			if strings.Contains(strings.ToLower(mem.Content), lowerQuery) ||
+				strings.Contains(strings.ToLower(mem.ID), lowerQuery) {
+				filtered = append(filtered, mem)
+			}
+		}
+		memories = filtered
+	}
+
+	// Sort by CreatedAt descending (newest first)
+	sort.Slice(memories, func(i, j int) bool {
+		return memories[j].CreatedAt.Before(memories[i].CreatedAt)
+	})
+
 	return memories, nil
 }
 

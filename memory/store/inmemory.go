@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 
 	"github.com/sweetpotato0/ai-allin/memory"
@@ -39,15 +40,44 @@ func (s *InMemoryStore) SearchMemory(ctx context.Context, query string) ([]*memo
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	// Simple implementation: return all memories
-	// In a real implementation, this would use semantic search, vector similarity, etc.
+	// If query is empty, return all memories
 	if query == "" {
-		return s.memories, nil
+		// Return a copy sorted by creation time (newest first)
+		results := make([]*memory.Memory, len(s.memories))
+		copy(results, s.memories)
+		// Sort by CreatedAt descending
+		for i := 0; i < len(results)-1; i++ {
+			for j := i + 1; j < len(results); j++ {
+				if results[j].CreatedAt.After(results[i].CreatedAt) {
+					results[i], results[j] = results[j], results[i]
+				}
+			}
+		}
+		return results, nil
 	}
 
-	// Return all memories for now
-	// TODO: Implement proper search logic
-	return s.memories, nil
+	// Search memories by content (case-insensitive substring match)
+	results := make([]*memory.Memory, 0)
+	lowerQuery := strings.ToLower(query)
+
+	for _, mem := range s.memories {
+		// Search in content and ID
+		if strings.Contains(strings.ToLower(mem.Content), lowerQuery) ||
+			strings.Contains(strings.ToLower(mem.ID), lowerQuery) {
+			results = append(results, mem)
+		}
+	}
+
+	// Sort results by CreatedAt descending (newest first)
+	for i := 0; i < len(results)-1; i++ {
+		for j := i + 1; j < len(results); j++ {
+			if results[j].CreatedAt.After(results[i].CreatedAt) {
+				results[i], results[j] = results[j], results[i]
+			}
+		}
+	}
+
+	return results, nil
 }
 
 // Clear removes all memories from the store
