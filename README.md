@@ -1,0 +1,189 @@
+# AI-ALLIN - AI Agent Framework
+
+A comprehensive, production-ready Go framework for building AI agents with streaming support, tool integration, and multi-backend storage.
+
+**[中文文档](./README_ZH.md)**
+
+## Features
+
+- **Multi-Provider LLM Support**: OpenAI, Anthropic Claude, Groq, Cohere, Google Gemini
+- **Streaming Response Support**: Real-time streaming for all LLM providers
+- **Agent Framework**: Configurable agents with middleware, prompts, and memory
+- **Tool Integration**: Register and execute tools/functions
+- **Multi-Backend Storage**:
+  - In-Memory (development)
+  - PostgreSQL with full-text search
+  - Redis with caching
+  - MongoDB document storage
+  - PGVector for embeddings
+- **Session Management**: Conversation session tracking and management
+- **Execution Graphs**: Workflow orchestration with conditional branching
+- **Thread-Safe Operations**: RWMutex protected concurrent access
+- **Configuration Validation**: Environment-based configuration with validation
+
+## Quick Start
+
+### Installation
+
+```bash
+go get github.com/sweetpotato0/ai-allin
+```
+
+### Basic Usage
+
+```go
+package main
+
+import (
+    "context"
+    "github.com/sweetpotato0/ai-allin/agent"
+    "github.com/sweetpotato0/ai-allin/contrib/provider/openai"
+)
+
+func main() {
+    // Create LLM provider
+    llm := openai.New(&openai.Config{
+        APIKey:      "your-api-key",
+        Model:       "gpt-4",
+        MaxTokens:   2000,
+        Temperature: 0.7,
+    })
+
+    // Create agent
+    ag := agent.New(
+        agent.WithName("MyAgent"),
+        agent.WithSystemPrompt("You are a helpful assistant"),
+        agent.WithProvider(llm),
+    )
+
+    // Run agent
+    response, err := ag.Run(context.Background(), "What is AI?")
+    if err != nil {
+        panic(err)
+    }
+
+    println(response)
+}
+```
+
+## Architecture
+
+### Core Packages
+
+- **agent**: Agent implementation with options pattern
+- **context**: Conversation context management
+- **graph**: Workflow graph execution
+- **memory**: Memory storage interface and implementations
+- **message**: Message and role definitions
+- **middleware**: Middleware chain for request processing
+- **prompt**: Prompt template management
+- **runner**: Parallel task execution
+- **session**: Session management
+- **tool**: Tool registration and execution
+- **vector**: Vector embedding storage and search
+
+### Storage Implementations
+
+- **InMemory**: Fast development storage
+- **PostgreSQL**: Production-grade with full-text search indexes
+- **Redis**: High-performance caching layer
+- **MongoDB**: Document-based storage
+- **PGVector**: Vector similarity search
+
+## Configuration
+
+### Environment Variables
+
+```bash
+# PostgreSQL Configuration
+export POSTGRES_HOST=localhost
+export POSTGRES_PORT=5432
+export POSTGRES_USER=postgres
+export POSTGRES_PASSWORD=your_password
+export POSTGRES_DB=ai_allin
+export POSTGRES_SSLMODE=disable
+
+# Redis Configuration
+export REDIS_ADDR=localhost:6379
+export REDIS_PASSWORD=""
+export REDIS_DB=0
+export REDIS_PREFIX=ai-allin:memory:
+
+# MongoDB Configuration
+export MONGODB_URI=mongodb://localhost:27017
+export MONGODB_DB=ai_allin
+export MONGODB_COLLECTION=memories
+```
+
+## Performance Optimizations
+
+### Recent Improvements
+
+| Operation | Before | After | Improvement |
+|-----------|--------|-------|-------------|
+| ID Generation | 1000 ns/op | 113 ns/op | 9x faster |
+| Full-Text Search | O(n) scan | O(log n) index | 10-1000x faster |
+| Concurrent Connections | Unlimited | 25 pooled | More stable |
+| Query Timeouts | None | 30 seconds | Resource safe |
+
+### Thread Safety
+
+All concurrent operations are protected with sync.RWMutex:
+- Context message management
+- Tool registry operations
+- Prompt template management
+
+## Testing
+
+Run all tests:
+
+```bash
+go test ./...
+```
+
+Run specific package tests:
+
+```bash
+go test ./agent -v
+go test ./config -v
+go test ./memory -v
+```
+
+## Production Deployment
+
+### Prerequisites
+
+1. PostgreSQL 12+ (optional, for production storage)
+2. Go 1.18+
+3. Set required environment variables
+
+### Configuration
+
+1. Set up environment variables for your database
+2. Run database migrations
+3. Configure connection pooling based on your load
+4. Enable query timeouts (default: 30 seconds)
+
+### Monitoring
+
+Monitor these metrics:
+- Active database connections
+- Query execution times
+- Memory usage (with pagination limits)
+- Error rates by operation type
+
+## Contributing
+
+Contributions are welcome! Please ensure:
+- Code passes `go build ./...`
+- Tests pass `go test ./...`
+- Code follows Go conventions
+- Changes are well-documented
+
+## License
+
+MIT
+
+## Support
+
+For issues, questions, or contributions, please refer to the project repository.
