@@ -19,6 +19,18 @@ func (m *MockLLMClient) Generate(ctx context.Context, messages []*message.Messag
 	return message.NewMessage(message.RoleAssistant, "I've calculated the result using the calculator tool."), nil
 }
 
+func (m *MockLLMClient) SetTemperature(temp float64) {
+	// Mock implementation - does nothing
+}
+
+func (m *MockLLMClient) SetMaxTokens(max int64) {
+	// Mock implementation - does nothing
+}
+
+func (m *MockLLMClient) SetModel(model string) {
+	// Mock implementation - does nothing
+}
+
 func main() {
 	fmt.Println("=== Tools Example ===\n")
 

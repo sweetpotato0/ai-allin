@@ -22,6 +22,18 @@ func (m *MockLLMClient) Generate(ctx context.Context, messages []*message.Messag
 	return message.NewMessage(message.RoleAssistant, "This is a mock response from the LLM"), nil
 }
 
+func (m *MockLLMClient) SetTemperature(temp float64) {
+	// Mock implementation - does nothing
+}
+
+func (m *MockLLMClient) SetMaxTokens(max int64) {
+	// Mock implementation - does nothing
+}
+
+func (m *MockLLMClient) SetModel(model string) {
+	// Mock implementation - does nothing
+}
+
 func main() {
 	fmt.Println("=== Middleware Examples with Separate Packages ===\n")
 

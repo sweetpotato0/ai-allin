@@ -16,6 +16,15 @@ import (
 type LLMClient interface {
 	// Generate generates a response from the LLM
 	Generate(ctx context.Context, messages []*message.Message, tools []map[string]interface{}) (*message.Message, error)
+
+	// SetTemperature updates the temperature setting for generation
+	SetTemperature(temp float64)
+
+	// SetMaxTokens updates the maximum tokens limit for generation
+	SetMaxTokens(max int64)
+
+	// SetModel updates the model to use for generation
+	SetModel(model string)
 }
 
 // Agent represents an AI agent

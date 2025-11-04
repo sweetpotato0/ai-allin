@@ -16,6 +16,18 @@ func (m *MockLLMClient) Generate(ctx context.Context, messages []*message.Messag
 	return message.NewMessage(message.RoleAssistant, "Hello! I'm a helpful AI assistant. How can I help you today?"), nil
 }
 
+func (m *MockLLMClient) SetTemperature(temp float64) {
+	// Mock implementation - does nothing
+}
+
+func (m *MockLLMClient) SetMaxTokens(max int64) {
+	// Mock implementation - does nothing
+}
+
+func (m *MockLLMClient) SetModel(model string) {
+	// Mock implementation - does nothing
+}
+
 func main() {
 	fmt.Println("=== Basic Agent Example ===\n")
 
