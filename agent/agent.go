@@ -287,7 +287,7 @@ func (a *Agent) Stream(ctx context.Context, input string, callback func(string) 
 
 // Clone creates a copy of the agent with the same configuration
 func (a *Agent) Clone() *Agent {
-	return New(
+	cloned := New(
 		WithName(a.name),
 		WithSystemPrompt(a.systemPrompt),
 		WithMaxIterations(a.maxIterations),
@@ -295,4 +295,29 @@ func (a *Agent) Clone() *Agent {
 		WithProvider(a.llm),
 		WithTools(a.enableTools),
 	)
+
+	// Clone memory store if set
+	if a.memory != nil {
+		cloned.memory = a.memory
+		cloned.enableMemory = a.enableMemory
+	}
+
+	// Clone all registered tools
+	for _, tool := range a.tools.List() {
+		if tool != nil {
+			_ = cloned.tools.Register(tool)
+		}
+	}
+
+	// Clone all registered prompts
+	if a.promptManager != nil {
+		cloned.promptManager = a.promptManager // Share prompt manager
+	}
+
+	// Clone middleware chain
+	if a.middlewares != nil {
+		cloned.middlewares = middleware.NewChain(a.middlewares.List()...)
+	}
+
+	return cloned
 }

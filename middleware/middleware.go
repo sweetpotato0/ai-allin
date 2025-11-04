@@ -73,6 +73,16 @@ func (c *MiddlewareChain) Add(m Middleware) *MiddlewareChain {
 	return c
 }
 
+// List returns a copy of all middlewares in the chain
+func (c *MiddlewareChain) List() []Middleware {
+	if c == nil || len(c.middlewares) == 0 {
+		return []Middleware{}
+	}
+	result := make([]Middleware, len(c.middlewares))
+	copy(result, c.middlewares)
+	return result
+}
+
 // Execute runs all middlewares in the chain
 func (c *MiddlewareChain) Execute(ctx *Context, finalHandler Handler) error {
 	return c.executeMiddleware(ctx, 0, finalHandler)
