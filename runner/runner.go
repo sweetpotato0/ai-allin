@@ -96,6 +96,15 @@ func (pr *ParallelRunner) RunParallel(ctx context.Context, tasks []*Task) []*Res
 		wg.Add(1)
 		go func(index int, t *Task) {
 			defer wg.Done()
+			defer func() {
+				if r := recover(); r != nil {
+					results[index] = &Result{
+						TaskID: t.ID,
+						Output: "",
+						Error:  fmt.Errorf("panic in task %s: %v", t.ID, r),
+					}
+				}
+			}()
 
 			output, err := pr.runner.Run(ctx, t.Agent, t.Input)
 			results[index] = &Result{

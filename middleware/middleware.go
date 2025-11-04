@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/sweetpotato0/ai-allin/message"
 )
@@ -90,9 +91,19 @@ func (c *MiddlewareChain) Execute(ctx *Context, finalHandler Handler) error {
 
 // executeMiddleware recursively executes middlewares in sequence
 func (c *MiddlewareChain) executeMiddleware(ctx *Context, index int, finalHandler Handler) error {
+	defer func() {
+		if r := recover(); r != nil {
+			// Handle panic in middleware chain
+			ctx.Error = fmt.Errorf("panic in middleware chain: %v", r)
+		}
+	}()
+
 	if index >= len(c.middlewares) {
 		// All middlewares executed, call the final handler
-		return finalHandler(ctx)
+		if err := finalHandler(ctx); err != nil {
+			return err
+		}
+		return ctx.Error
 	}
 
 	// Create a handler for the next middleware
@@ -100,6 +111,12 @@ func (c *MiddlewareChain) executeMiddleware(ctx *Context, index int, finalHandle
 		return c.executeMiddleware(ctx, index+1, finalHandler)
 	}
 
-	// Execute current middleware
+	// Execute current middleware with panic protection
+	defer func() {
+		if r := recover(); r != nil {
+			ctx.Error = fmt.Errorf("panic in middleware %s: %v", c.middlewares[index].Name(), r)
+		}
+	}()
+
 	return c.middlewares[index].Execute(ctx, nextHandler)
 }
