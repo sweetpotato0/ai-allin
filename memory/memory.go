@@ -1,8 +1,18 @@
 package memory
 
-import "context"
+import (
+	"context"
+	"time"
+)
 
-type Memory struct{}
+// Memory represents a stored memory/conversation entry
+type Memory struct {
+	ID        string                 `json:"id"`
+	Content   string                 `json:"content"`
+	Metadata  map[string]interface{} `json:"metadata"`
+	CreatedAt time.Time              `json:"created_at"`
+	UpdatedAt time.Time              `json:"updated_at"`
+}
 
 // MemoryStore defines the interface for storing and retrieving memories.
 type MemoryStore interface {
