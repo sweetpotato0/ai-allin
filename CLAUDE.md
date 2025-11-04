@@ -22,6 +22,9 @@ go build ./...
 go test ./...
 
 # Run tests for a specific package
+go test ./middleware ./middleware/logger ./middleware/validator
+go test ./middleware/errorhandler ./middleware/enricher ./middleware/limiter
+go test ./vector/store
 go test ./memory
 go test ./session
 go test ./tool
@@ -37,6 +40,9 @@ go run examples/tools/main.go
 go run examples/context/main.go
 go run examples/graph/main.go
 go run examples/providers/main.go
+go run examples/middleware/main.go
+go run examples/streaming/main.go
+go run examples/allproviders/main.go
 ```
 
 ## Architecture
@@ -54,11 +60,22 @@ The codebase is organized into several core packages that work together to provi
 - **session/** - Manages conversation sessions with support for multiple concurrent sessions
   - **session/store/** - Storage backends for sessions (currently Redis implementation)
 - **memory/** - Defines memory storage interface for agent knowledge
-  - **memory/store/** - Storage backends including in-memory and Redis implementations
+  - **memory/store/** - Storage backends including in-memory, Redis, PostgreSQL, and MongoDB implementations
+- **middleware/** - Extensible request/response processing pipeline
+  - **middleware/logger/** - Request/response logging middleware
+  - **middleware/validator/** - Input validation and response filtering
+  - **middleware/errorhandler/** - Error handling and recovery
+  - **middleware/enricher/** - Context metadata enrichment
+  - **middleware/limiter/** - Rate limiting
+- **vector/** - Vector search and embedding support
+  - **vector/store/** - Vector storage backends (in-memory and pgvector)
 - **runner/** - Provides task execution engines with support for parallel, sequential, and conditional execution
 - **contrib/provider/** - LLM provider implementations
   - **contrib/provider/openai/** - OpenAI API integration using official `openai-go` SDK
   - **contrib/provider/claude/** - Anthropic Claude integration using official `anthropic-sdk-go` SDK
+  - **contrib/provider/groq/** - Groq API integration (mixtral-8x7b-32768)
+  - **contrib/provider/cohere/** - Cohere API integration for enterprise LLM
+  - **contrib/provider/gemini/** - Google Gemini integration
 
 ### Design Patterns
 
@@ -73,15 +90,109 @@ The codebase follows Go interface-based design with the following key patterns:
 
 ### Storage Backends
 
-The framework supports multiple storage backends:
+The framework supports multiple storage backends for both memory and sessions:
+
+### Memory Storage
 
 - **In-Memory**: Fast, suitable for development/testing (no external dependencies)
 - **Redis**: Persistent, distributed, production-ready storage
+- **PostgreSQL**: Full SQL database support with CRUD operations and JSON metadata
+- **MongoDB**: Document-based storage with regex search support
 
-To add a new storage backend:
+#### Adding a New Storage Backend
+
 1. Implement the `MemoryStore` interface in `memory/store/`
-2. Implement session storage in `session/store/`
-3. Add appropriate configuration structures
+2. Implement session storage in `session/store/` (if needed)
+3. Add appropriate configuration structures and default configs
+
+### Vector Storage
+
+- **In-Memory**: Thread-safe vector storage with cosine similarity and Euclidean distance calculations
+- **PostgreSQL pgvector**: Scalable vector storage using PostgreSQL's pgvector extension with HNSW or IVFFLAT indexing
+
+#### Using Vector Search
+
+```go
+import "github.com/sweetpotato0/ai-allin/vector/store"
+
+// Create in-memory vector store
+vectorStore := store.NewInMemoryVectorStore()
+
+// Add embedding
+embedding := &vector.Embedding{
+    ID:     "doc1",
+    Text:   "Your text here",
+    Vector: []float32{0.1, 0.2, 0.3, ...},
+}
+vectorStore.AddEmbedding(ctx, embedding)
+
+// Search for similar vectors
+queryVector := []float32{0.15, 0.25, 0.35, ...}
+results, err := vectorStore.Search(ctx, queryVector, 10) // Top 10 results
+```
+
+## Middleware System Details
+
+The middleware system is organized into specialized packages for better modularity:
+
+### Package Organization
+
+- **middleware/middleware.go** - Core interfaces and chain orchestration
+- **middleware/logger/** - Request/response logging
+- **middleware/validator/** - Input validation and response filtering
+- **middleware/errorhandler/** - Error handling and recovery
+- **middleware/enricher/** - Context metadata enrichment
+- **middleware/limiter/** - Rate limiting
+
+### Advanced Middleware Usage
+
+```go
+ag := agent.New(
+    agent.WithProvider(llm),
+    // Add multiple middlewares in order
+    agent.WithMiddleware(logger.NewRequestLogger(func(msg string) {
+        log.Println(msg)
+    })),
+    agent.WithMiddleware(validator.NewInputValidator(func(input string) error {
+        if len(input) > 1000 {
+            return fmt.Errorf("input too long")
+        }
+        return nil
+    })),
+    agent.WithMiddleware(limiter.NewRateLimiter(100)), // Max 100 requests
+    agent.WithMiddleware(errorhandler.NewErrorHandler(func(err error) error {
+        log.Printf("Error: %v\n", err)
+        return nil // Continue processing
+    })),
+)
+```
+
+### Creating Custom Middleware
+
+```go
+type CustomMiddleware struct {
+    processor func(*middleware.Context) error
+}
+
+func (m *CustomMiddleware) Name() string {
+    return "custom-middleware"
+}
+
+func (m *CustomMiddleware) Execute(ctx *middleware.Context, next middleware.Handler) error {
+    // Pre-processing
+    if err := m.processor(ctx); err != nil {
+        return err
+    }
+
+    // Call next middleware
+    if err := next(ctx); err != nil {
+        return err
+    }
+
+    // Post-processing
+    return nil
+}
+```
 
 ## Key Implementation Notes
 
@@ -104,6 +215,9 @@ To integrate with an LLM provider, implement the `agent.LLMClient` interface:
 ```go
 type LLMClient interface {
     Generate(ctx context.Context, messages []*message.Message, tools []map[string]interface{}) (*message.Message, error)
+    SetTemperature(temp float64)
+    SetMaxTokens(max int64)
+    SetModel(model string)
 }
 ```
 
@@ -141,7 +255,58 @@ agent := agent.New(
 )
 ```
 
-Both providers support tool calling and are production-ready.
+#### Groq Provider
+
+```go
+import "github.com/sweetpotato0/ai-allin/contrib/provider/groq"
+
+config := groq.DefaultConfig(apiKey)
+config.Model = "mixtral-8x7b-32768"  // Fast inference
+provider := groq.New(config)
+
+agent := agent.New(
+    agent.WithProvider(provider),
+    agent.WithSystemPrompt("You are helpful"),
+)
+```
+
+#### Cohere Provider
+
+```go
+import "github.com/sweetpotato0/ai-allin/contrib/provider/cohere"
+
+config := cohere.DefaultConfig(apiKey)
+config.Model = "command"
+provider := cohere.New(config)
+
+agent := agent.New(
+    agent.WithProvider(provider),
+    agent.WithSystemPrompt("You are helpful"),
+)
+```
+
+#### Gemini Provider
+
+```go
+import "github.com/sweetpotato0/ai-allin/contrib/provider/gemini"
+
+config := gemini.DefaultConfig(apiKey)
+config.Model = "gemini-pro"
+provider := gemini.New(config)
+
+agent := agent.New(
+    agent.WithProvider(provider),
+    agent.WithSystemPrompt("You are helpful"),
+)
+```
+
+All providers support tool calling, configuration methods, and are production-ready. You can dynamically switch providers by updating the provider configuration:
+
+```go
+provider.SetTemperature(0.9)
+provider.SetMaxTokens(1024)
+provider.SetModel("different-model")
+```
 
 ## Agent Usage with Options Pattern
 
@@ -216,12 +381,21 @@ All examples are organized in `examples/` directory:
 ✅ Context module integration into Agent
 ✅ Session management with persistence
 ✅ In-memory and Redis storage backends
+✅ PostgreSQL storage backend with full CRUD operations
+✅ MongoDB storage backend with document-based storage
 ✅ OpenAI provider (using official openai-go SDK)
 ✅ Claude provider (using official anthropic-sdk-go SDK)
+✅ Groq provider for fast inference (mixtral-8x7b-32768)
+✅ Cohere provider for enterprise LLM integration
+✅ Gemini provider for Google's generative AI
 ✅ Parallel, sequential, and conditional task runners
 ✅ Comprehensive examples demonstrating all features
 ✅ Streaming LLM response support
 ✅ Middleware support for extensible request/response processing
+✅ Vector search functionality with cosine similarity and Euclidean distance
+✅ In-memory vector storage with TopK similarity search
+✅ PostgreSQL pgvector storage for scalable vector operations
+✅ LLMClient interface with SetTemperature, SetMaxTokens, SetModel methods
 
 ## Middleware System
 
@@ -276,7 +450,13 @@ Middlewares are executed in order, with each middleware able to:
 
 ## Future Enhancements
 
-- Additional storage backends (PostgreSQL, MongoDB)
-- Vector search for memory
-- Additional LLM provider integrations
+- Embedding service integration (OpenAI embeddings, Cohere embeddings, etc.)
+- Additional storage backends (Elasticsearch, Milvus, Weaviate)
+- Advanced middleware patterns (caching, retry logic, circuit breaker)
+- Tool calling improvements and extensions
+- Performance optimization and benchmarking
+- Distributed agent support for multi-agent systems
+- Web UI for agent management and monitoring
+- Plugin system for custom extensions
+- GraphQL API for agent interaction
 
