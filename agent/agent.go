@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"fmt"
+	"time"
 
 	agentContext "github.com/sweetpotato0/ai-allin/context"
 	"github.com/sweetpotato0/ai-allin/memory"
@@ -233,7 +234,12 @@ func (a *Agent) Run(ctx context.Context, input string) (string, error) {
 				// No tool calls, return the response
 				if a.enableMemory && a.memory != nil {
 					// Store conversation in memory
-					mem := &memory.Memory{}
+					conversationContent := fmt.Sprintf("User: %s\nAssistant: %s", input, response.Content)
+					mem := &memory.Memory{
+						ID:       fmt.Sprintf("mem_%d", time.Now().UnixNano()),
+						Content:  conversationContent,
+						Metadata: map[string]interface{}{"input": input, "response": response.Content},
+					}
 					a.memory.AddMemory(mwCtx.Context(), mem)
 				}
 				return nil
