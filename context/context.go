@@ -1,11 +1,15 @@
 package context
 
 import (
+	"sync"
+
 	"github.com/sweetpotato0/ai-allin/message"
 )
 
 // Context manages the conversation context including message history
+// All operations are thread-safe using RWMutex protection
 type Context struct {
+	mu       sync.RWMutex // Protects messages and maxSize
 	messages []*message.Message
 	maxSize  int // Maximum number of messages to keep
 }
@@ -28,6 +32,9 @@ func NewWithMaxSize(maxSize int) *Context {
 
 // AddMessage adds a message to the context
 func (c *Context) AddMessage(msg *message.Message) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
 	c.messages = append(c.messages, msg)
 
 	// Trim old messages if exceeds max size
@@ -56,13 +63,22 @@ func (c *Context) AddMessage(msg *message.Message) {
 	}
 }
 
-// GetMessages returns all messages in the context
+// GetMessages returns a copy of all messages in the context
 func (c *Context) GetMessages() []*message.Message {
-	return c.messages
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	// Return a copy to prevent external modification
+	result := make([]*message.Message, len(c.messages))
+	copy(result, c.messages)
+	return result
 }
 
 // GetLastMessage returns the last message or nil if empty
 func (c *Context) GetLastMessage() *message.Message {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
 	if len(c.messages) == 0 {
 		return nil
 	}
@@ -71,6 +87,9 @@ func (c *Context) GetLastMessage() *message.Message {
 
 // GetMessagesByRole returns all messages with the specified role
 func (c *Context) GetMessagesByRole(role message.Role) []*message.Message {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
 	result := make([]*message.Message, 0)
 	for _, msg := range c.messages {
 		if msg.Role == role {
@@ -82,10 +101,17 @@ func (c *Context) GetMessagesByRole(role message.Role) []*message.Message {
 
 // Clear removes all messages from the context
 func (c *Context) Clear() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
 	c.messages = make([]*message.Message, 0)
 }
 
 // Size returns the current number of messages
 func (c *Context) Size() int {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
 	return len(c.messages)
 }
+

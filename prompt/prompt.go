@@ -3,6 +3,7 @@ package prompt
 import (
 	"fmt"
 	"strings"
+	"sync"
 	"text/template"
 )
 
@@ -36,7 +37,9 @@ func (t *Template) Render(vars map[string]interface{}) (string, error) {
 }
 
 // Manager manages prompt templates
+// All operations are thread-safe using RWMutex protection
 type Manager struct {
+	mu        sync.RWMutex // Protects templates map
 	templates map[string]*Template
 }
 
@@ -52,6 +55,10 @@ func (m *Manager) Register(tmpl *Template) error {
 	if tmpl.Name == "" {
 		return fmt.Errorf("template name cannot be empty")
 	}
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
 	if _, exists := m.templates[tmpl.Name]; exists {
 		return fmt.Errorf("template %s already registered", tmpl.Name)
 	}
@@ -70,6 +77,9 @@ func (m *Manager) RegisterString(name, content string) error {
 
 // Get retrieves a template by name
 func (m *Manager) Get(name string) (*Template, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
 	tmpl, ok := m.templates[name]
 	if !ok {
 		return nil, fmt.Errorf("template %s not found", name)
@@ -88,6 +98,9 @@ func (m *Manager) Render(name string, vars map[string]interface{}) (string, erro
 
 // List returns all registered template names
 func (m *Manager) List() []string {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
 	names := make([]string, 0, len(m.templates))
 	for name := range m.templates {
 		names = append(names, name)
@@ -141,3 +154,4 @@ func (b *Builder) Reset() *Builder {
 	b.parts = make([]string, 0)
 	return b
 }
+

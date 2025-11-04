@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sync"
 )
 
 // Parameter defines a tool parameter
@@ -88,7 +89,9 @@ func (t *Tool) ToJSONSchema() map[string]interface{} {
 }
 
 // Registry manages a collection of tools
+// All operations are thread-safe using RWMutex protection
 type Registry struct {
+	mu    sync.RWMutex // Protects tools map
 	tools map[string]*Tool
 }
 
@@ -104,6 +107,10 @@ func (r *Registry) Register(tool *Tool) error {
 	if tool.Name == "" {
 		return fmt.Errorf("tool name cannot be empty")
 	}
+
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
 	if _, exists := r.tools[tool.Name]; exists {
 		return fmt.Errorf("tool %s already registered", tool.Name)
 	}
@@ -113,6 +120,9 @@ func (r *Registry) Register(tool *Tool) error {
 
 // Get retrieves a tool by name
 func (r *Registry) Get(name string) (*Tool, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
 	tool, ok := r.tools[name]
 	if !ok {
 		return nil, fmt.Errorf("tool %s not found", name)
@@ -122,6 +132,9 @@ func (r *Registry) Get(name string) (*Tool, error) {
 
 // List returns all registered tools
 func (r *Registry) List() []*Tool {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
 	tools := make([]*Tool, 0, len(r.tools))
 	for _, tool := range r.tools {
 		tools = append(tools, tool)
@@ -131,6 +144,9 @@ func (r *Registry) List() []*Tool {
 
 // ToJSONSchemas returns all tools in JSON schema format
 func (r *Registry) ToJSONSchemas() []map[string]interface{} {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
 	schemas := make([]map[string]interface{}, 0, len(r.tools))
 	for _, tool := range r.tools {
 		schemas = append(schemas, tool.ToJSONSchema())
