@@ -136,25 +136,33 @@ func (s *RedisStore) SearchMemory(ctx context.Context, query string) ([]*memory.
 	return memories, nil
 }
 
-// Clear removes all memories from Redis
+// Clear removes all memories from Redis using a transaction
 func (s *RedisStore) Clear(ctx context.Context) error {
-	// Get all memory keys
 	setKey := fmt.Sprintf("%sset", s.prefix)
-	keys, err := s.client.SMembers(ctx, setKey).Result()
-	if err != nil {
-		return fmt.Errorf("failed to get memory keys: %w", err)
-	}
 
-	// Delete all keys
-	if len(keys) > 0 {
-		if err := s.client.Del(ctx, keys...).Err(); err != nil {
-			return fmt.Errorf("failed to delete memory keys: %w", err)
+	// Use a transaction to ensure atomic operation
+	err := s.client.Watch(ctx, func(tx *redis.Tx) error {
+		// Get all memory keys
+		keys, err := tx.SMembers(ctx, setKey).Result()
+		if err != nil {
+			return fmt.Errorf("failed to get memory keys: %w", err)
 		}
-	}
 
-	// Clear the set
-	if err := s.client.Del(ctx, setKey).Err(); err != nil {
-		return fmt.Errorf("failed to delete memory set: %w", err)
+		// Use a transaction to delete all keys atomically
+		_, err = tx.TxPipelined(ctx, func(pipe redis.Pipeliner) error {
+			// Delete all memory keys
+			if len(keys) > 0 {
+				pipe.Del(ctx, keys...)
+			}
+			// Clear the set
+			pipe.Del(ctx, setKey)
+			return nil
+		})
+		return err
+	}, setKey)
+
+	if err != nil {
+		return fmt.Errorf("failed to clear memories: %w", err)
 	}
 
 	return nil

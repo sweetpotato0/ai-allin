@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
 	"sync"
 
@@ -45,14 +46,10 @@ func (s *InMemoryStore) SearchMemory(ctx context.Context, query string) ([]*memo
 		// Return a copy sorted by creation time (newest first)
 		results := make([]*memory.Memory, len(s.memories))
 		copy(results, s.memories)
-		// Sort by CreatedAt descending
-		for i := 0; i < len(results)-1; i++ {
-			for j := i + 1; j < len(results); j++ {
-				if results[j].CreatedAt.After(results[i].CreatedAt) {
-					results[i], results[j] = results[j], results[i]
-				}
-			}
-		}
+		// Sort by CreatedAt descending using efficient quicksort
+		sort.Slice(results, func(i, j int) bool {
+			return results[i].CreatedAt.After(results[j].CreatedAt)
+		})
 		return results, nil
 	}
 
@@ -68,14 +65,10 @@ func (s *InMemoryStore) SearchMemory(ctx context.Context, query string) ([]*memo
 		}
 	}
 
-	// Sort results by CreatedAt descending (newest first)
-	for i := 0; i < len(results)-1; i++ {
-		for j := i + 1; j < len(results); j++ {
-			if results[j].CreatedAt.After(results[i].CreatedAt) {
-				results[i], results[j] = results[j], results[i]
-			}
-		}
-	}
+	// Sort results by CreatedAt descending using efficient quicksort
+	sort.Slice(results, func(i, j int) bool {
+		return results[i].CreatedAt.After(results[j].CreatedAt)
+	})
 
 	return results, nil
 }
