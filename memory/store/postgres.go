@@ -8,6 +8,7 @@ import (
 	"time"
 
 	_ "github.com/lib/pq"
+	errorskg "github.com/sweetpotato0/ai-allin/errors"
 	"github.com/sweetpotato0/ai-allin/memory"
 )
 
@@ -247,7 +248,7 @@ func (s *PostgresStore) GetMemoryByID(ctx context.Context, id string) (*memory.M
 
 	if err != nil {
 		if err == sql.ErrNoRows {
-			return nil, fmt.Errorf("memory not found")
+			return nil, fmt.Errorf("memory %s: %w", id, errorskg.ErrNotFound)
 		}
 		return nil, fmt.Errorf("failed to get memory: %w", err)
 	}

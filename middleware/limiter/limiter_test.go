@@ -29,7 +29,7 @@ func TestRateLimiter(t *testing.T) {
 		ctx := &middleware.Context{}
 
 		// First request
-		limiter.Execute(ctx, func(c *middleware.Context) error { return nil })
+		_ = limiter.Execute(ctx, func(c *middleware.Context) error { return nil })
 
 		// Second request should fail
 		err := limiter.Execute(ctx, func(c *middleware.Context) error { return nil })
@@ -46,7 +46,7 @@ func TestRateLimiter(t *testing.T) {
 		ctx := &middleware.Context{}
 
 		// First request
-		limiter.Execute(ctx, func(c *middleware.Context) error { return nil })
+		_ = limiter.Execute(ctx, func(c *middleware.Context) error { return nil })
 
 		// Reset
 		limiter.Reset()
@@ -63,7 +63,7 @@ func TestRateLimiter(t *testing.T) {
 		ctx := &middleware.Context{}
 
 		for i := 0; i < 3; i++ {
-			limiter.Execute(ctx, func(c *middleware.Context) error { return nil })
+			_ = limiter.Execute(ctx, func(c *middleware.Context) error { return nil })
 		}
 
 		if limiter.GetCounter() != 3 {

@@ -155,9 +155,13 @@ func (a *Agent) RegisterPrompt(name, content string) error {
 	return a.promptManager.RegisterString(name, content)
 }
 
-// AddMiddleware adds a middleware to the agent
-func (a *Agent) AddMiddleware(m middleware.Middleware) {
+// AddMiddleware adds a middleware to the agent with validation
+func (a *Agent) AddMiddleware(m middleware.Middleware) error {
+	if m == nil {
+		return fmt.Errorf("middleware cannot be nil")
+	}
 	a.middlewares.Add(m)
+	return nil
 }
 
 // GetMiddlewareChain returns the middleware chain

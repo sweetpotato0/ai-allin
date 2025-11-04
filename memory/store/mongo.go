@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	errorskg "github.com/sweetpotato0/ai-allin/errors"
 	"github.com/sweetpotato0/ai-allin/memory"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
@@ -215,7 +216,7 @@ func (s *MongoStore) DeleteMemory(ctx context.Context, id string) error {
 	}
 
 	if result.DeletedCount == 0 {
-		return fmt.Errorf("memory not found")
+		return fmt.Errorf("memory %s: %w", id, errorskg.ErrNotFound)
 	}
 
 	return nil
@@ -228,7 +229,7 @@ func (s *MongoStore) GetMemoryByID(ctx context.Context, id string) (*memory.Memo
 
 	if err != nil {
 		if err == mongo.ErrNoDocuments {
-			return nil, fmt.Errorf("memory not found")
+			return nil, fmt.Errorf("memory %s: %w", id, errorskg.ErrNotFound)
 		}
 		return nil, fmt.Errorf("failed to get memory: %w", err)
 	}

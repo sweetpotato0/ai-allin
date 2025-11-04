@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	_ "github.com/lib/pq"
+	errorskg "github.com/sweetpotato0/ai-allin/errors"
 	"github.com/sweetpotato0/ai-allin/vector"
 )
 
@@ -186,7 +187,11 @@ func (s *PGVectorStore) Search(ctx context.Context, queryVector []float32, topK 
 			return nil, fmt.Errorf("failed to scan embedding: %w", err)
 		}
 
-		vec := s.stringToVector(vectorStr)
+		vec, err := s.stringToVector(vectorStr)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse vector for embedding %s: %w", id, err)
+		}
+
 		embeddings = append(embeddings, &vector.Embedding{
 			ID:     id,
 			Text:   text,
@@ -215,7 +220,7 @@ func (s *PGVectorStore) DeleteEmbedding(ctx context.Context, id string) error {
 	}
 
 	if rows == 0 {
-		return fmt.Errorf("embedding not found")
+		return fmt.Errorf("embedding %s: %w", id, errorskg.ErrNotFound)
 	}
 
 	return nil
@@ -233,12 +238,16 @@ func (s *PGVectorStore) GetEmbedding(ctx context.Context, id string) (*vector.Em
 	err := s.db.QueryRowContext(ctx, query, id).Scan(&embID, &text, &vectorStr)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			return nil, fmt.Errorf("embedding not found")
+			return nil, fmt.Errorf("embedding %s: %w", id, errorskg.ErrNotFound)
 		}
 		return nil, fmt.Errorf("failed to get embedding: %w", err)
 	}
 
-	vec := s.stringToVector(vectorStr)
+	vec, err := s.stringToVector(vectorStr)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse vector: %w", err)
+	}
+
 	return &vector.Embedding{
 		ID:     embID,
 		Text:   text,
@@ -282,17 +291,20 @@ func (s *PGVectorStore) vectorToString(vec []float32) string {
 	return "[" + strings.Join(parts, ",") + "]"
 }
 
-func (s *PGVectorStore) stringToVector(str string) []float32 {
+func (s *PGVectorStore) stringToVector(str string) ([]float32, error) {
 	// Simple parsing: remove brackets and convert
 	str = strings.TrimPrefix(str, "[")
 	str = strings.TrimSuffix(str, "]")
 	parts := strings.Split(str, ",")
 
 	vec := make([]float32, 0, len(parts))
-	for _, part := range parts {
+	for i, part := range parts {
 		var v float32
-		fmt.Sscanf(strings.TrimSpace(part), "%f", &v)
+		n, err := fmt.Sscanf(strings.TrimSpace(part), "%f", &v)
+		if err != nil || n != 1 {
+			return nil, fmt.Errorf("failed to parse vector component at index %d: %q", i, part)
+		}
 		vec = append(vec, v)
 	}
-	return vec
+	return vec, nil
 }

@@ -33,8 +33,8 @@ func TestMiddlewareChain(t *testing.T) {
 		chain := NewChain(m1, m2)
 		ctx := &Context{}
 
-		chain.Execute(ctx, func(c *Context) error {
-			*(&order) = append(order, "final")
+		_ = chain.Execute(ctx, func(c *Context) error {
+			order = append(order, "final")
 			return nil
 		})
 

@@ -90,9 +90,9 @@ func (s *InMemoryStore) Clear() error {
 }
 
 // Count returns the number of memories in the store
-func (s *InMemoryStore) Count() int {
+func (s *InMemoryStore) Count(ctx context.Context) (int, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	return len(s.memories)
+	return len(s.memories), nil
 }
