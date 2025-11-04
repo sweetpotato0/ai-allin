@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -106,10 +107,12 @@ func (s *PostgresStore) AddMemory(ctx context.Context, mem *memory.Memory) error
 
 	// Convert metadata to JSON
 	var metadataJSON []byte
-	if mem.Metadata != nil {
-		// In a real implementation, we would use json.Marshal
-		// For now, we'll use a simple placeholder
-		metadataJSON = []byte("{}")
+	if mem.Metadata != nil && len(mem.Metadata) > 0 {
+		var err error
+		metadataJSON, err = json.Marshal(mem.Metadata)
+		if err != nil {
+			return fmt.Errorf("failed to marshal metadata: %w", err)
+		}
 	} else {
 		metadataJSON = []byte("{}")
 	}
@@ -176,8 +179,14 @@ func (s *PostgresStore) SearchMemory(ctx context.Context, query string) ([]*memo
 			return nil, fmt.Errorf("failed to scan memory: %w", err)
 		}
 
-		// Initialize metadata map
+		// Unmarshal metadata JSON
 		mem.Metadata = make(map[string]interface{})
+		if metadataJSON != "" && metadataJSON != "{}" {
+			err := json.Unmarshal([]byte(metadataJSON), &mem.Metadata)
+			if err != nil {
+				return nil, fmt.Errorf("failed to unmarshal metadata: %w", err)
+			}
+		}
 
 		memories = append(memories, mem)
 	}
@@ -243,6 +252,13 @@ func (s *PostgresStore) GetMemoryByID(ctx context.Context, id string) (*memory.M
 		return nil, fmt.Errorf("failed to get memory: %w", err)
 	}
 
+	// Unmarshal metadata JSON
 	mem.Metadata = make(map[string]interface{})
+	if metadataJSON != "" && metadataJSON != "{}" {
+		err := json.Unmarshal([]byte(metadataJSON), &mem.Metadata)
+		if err != nil {
+			return nil, fmt.Errorf("failed to unmarshal metadata: %w", err)
+		}
+	}
 	return mem, nil
 }
