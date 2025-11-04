@@ -2,6 +2,7 @@ package memory
 
 import (
 	"context"
+	"fmt"
 	"time"
 )
 
@@ -12,6 +13,11 @@ type Memory struct {
 	Metadata  map[string]interface{} `json:"metadata"`
 	CreatedAt time.Time              `json:"created_at"`
 	UpdatedAt time.Time              `json:"updated_at"`
+}
+
+// GenerateMemoryID generates a unique ID for a memory entry using current timestamp
+func GenerateMemoryID() string {
+	return fmt.Sprintf("mem_%d", time.Now().UnixNano())
 }
 
 // MemoryStore defines the interface for storing and retrieving memories.

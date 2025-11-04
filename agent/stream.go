@@ -3,7 +3,6 @@ package agent
 import (
 	"context"
 	"fmt"
-	"time"
 
 	"github.com/sweetpotato0/ai-allin/memory"
 	"github.com/sweetpotato0/ai-allin/message"
@@ -78,7 +77,7 @@ func (a *Agent) RunStream(ctx context.Context, input string, callback StreamCall
 				// Store conversation in memory
 				conversationContent := fmt.Sprintf("User: %s\nAssistant: %s", input, response.Content)
 				mem := &memory.Memory{
-					ID:       fmt.Sprintf("mem_%d", time.Now().UnixNano()),
+					ID:       memory.GenerateMemoryID(),
 					Content:  conversationContent,
 					Metadata: map[string]interface{}{"input": input, "response": response.Content},
 				}
