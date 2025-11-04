@@ -30,12 +30,12 @@ type PostgresConfig struct {
 // DefaultPostgresConfig returns default PostgreSQL configuration
 func DefaultPostgresConfig() *PostgresConfig {
 	return &PostgresConfig{
-		Host:    "localhost",
-		Port:    5432,
-		User:    "postgres",
+		Host:     "localhost",
+		Port:     5432,
+		User:     "postgres",
 		Password: "postgres",
-		DBName:  "ai_allin",
-		SSLMode: "disable",
+		DBName:   "ai_allin",
+		SSLMode:  "disable",
 	}
 }
 
@@ -108,7 +108,7 @@ func (s *PostgresStore) AddMemory(ctx context.Context, mem *memory.Memory) error
 
 	// Convert metadata to JSON
 	var metadataJSON []byte
-	if mem.Metadata != nil && len(mem.Metadata) > 0 {
+	if len(mem.Metadata) > 0 {
 		var err error
 		metadataJSON, err = json.Marshal(mem.Metadata)
 		if err != nil {
