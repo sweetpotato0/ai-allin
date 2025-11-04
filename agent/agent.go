@@ -7,6 +7,7 @@ import (
 	agentContext "github.com/sweetpotato0/ai-allin/context"
 	"github.com/sweetpotato0/ai-allin/memory"
 	"github.com/sweetpotato0/ai-allin/message"
+	"github.com/sweetpotato0/ai-allin/middleware"
 	"github.com/sweetpotato0/ai-allin/prompt"
 	"github.com/sweetpotato0/ai-allin/tool"
 )
@@ -30,6 +31,7 @@ type Agent struct {
 	memory        memory.MemoryStore
 	promptManager *prompt.Manager
 	ctx           *agentContext.Context
+	middlewares   *middleware.MiddlewareChain
 }
 
 // Option is a function that configures an Agent
@@ -85,6 +87,20 @@ func WithProvider(provider LLMClient) Option {
 	}
 }
 
+// WithMiddleware adds a middleware to the agent
+func WithMiddleware(m middleware.Middleware) Option {
+	return func(a *Agent) {
+		a.middlewares.Add(m)
+	}
+}
+
+// WithMiddlewares sets the middleware chain
+func WithMiddlewares(middlewares ...middleware.Middleware) Option {
+	return func(a *Agent) {
+		a.middlewares = middleware.NewChain(middlewares...)
+	}
+}
+
 // New creates a new agent with the given options
 func New(opts ...Option) *Agent {
 	// Default values
@@ -98,6 +114,7 @@ func New(opts ...Option) *Agent {
 		tools:         tool.NewRegistry(),
 		promptManager: prompt.NewManager(),
 		ctx:           agentContext.New(),
+		middlewares:   middleware.NewChain(),
 	}
 
 	// Apply options
@@ -129,6 +146,16 @@ func (a *Agent) RegisterPrompt(name, content string) error {
 	return a.promptManager.RegisterString(name, content)
 }
 
+// AddMiddleware adds a middleware to the agent
+func (a *Agent) AddMiddleware(m middleware.Middleware) {
+	a.middlewares.Add(m)
+}
+
+// GetMiddlewareChain returns the middleware chain
+func (a *Agent) GetMiddlewareChain() *middleware.MiddlewareChain {
+	return a.middlewares
+}
+
 // AddMessage adds a message to the conversation
 func (a *Agent) AddMessage(msg *message.Message) {
 	a.ctx.AddMessage(msg)
@@ -150,67 +177,87 @@ func (a *Agent) ClearMessages() {
 
 // Run executes the agent with the given input
 func (a *Agent) Run(ctx context.Context, input string) (string, error) {
-	// Add user message
-	userMsg := message.NewMessage(message.RoleUser, input)
-	a.AddMessage(userMsg)
+	// Create middleware context
+	mwCtx := middleware.NewContext(ctx)
+	mwCtx.Input = input
 
-	// Search relevant memories if enabled
-	if a.enableMemory && a.memory != nil {
-		memories, err := a.memory.SearchMemory(ctx, input)
-		if err == nil && len(memories) > 0 {
-			// Add memories as context (simplified)
-			memoryContext := "Relevant memories:\n"
-			for _, mem := range memories {
-				memoryContext += fmt.Sprintf("- %v\n", mem)
+	// Execute with middleware chain
+	err := a.middlewares.Execute(mwCtx, func(mwCtx *middleware.Context) error {
+		// Add user message
+		userMsg := message.NewMessage(message.RoleUser, input)
+		a.AddMessage(userMsg)
+		mwCtx.Messages = a.GetMessages()
+
+		// Search relevant memories if enabled
+		if a.enableMemory && a.memory != nil {
+			memories, err := a.memory.SearchMemory(mwCtx.Context(), input)
+			if err == nil && len(memories) > 0 {
+				// Add memories as context (simplified)
+				memoryContext := "Relevant memories:\n"
+				for _, mem := range memories {
+					memoryContext += fmt.Sprintf("- %v\n", mem)
+				}
+				contextMsg := message.NewMessage(message.RoleSystem, memoryContext)
+				a.ctx.AddMessage(contextMsg)
 			}
-			contextMsg := message.NewMessage(message.RoleSystem, memoryContext)
-			a.ctx.AddMessage(contextMsg)
-		}
-	}
-
-	// Execution loop with tool calls
-	for i := 0; i < a.maxIterations; i++ {
-		// Get tool schemas if enabled
-		var toolSchemas []map[string]interface{}
-		if a.enableTools {
-			toolSchemas = a.tools.ToJSONSchemas()
 		}
 
-		// Call LLM
-		response, err := a.llm.Generate(ctx, a.ctx.GetMessages(), toolSchemas)
-		if err != nil {
-			return "", fmt.Errorf("LLM generation failed: %w", err)
-		}
-
-		a.AddMessage(response)
-
-		// Check if there are tool calls
-		if len(response.ToolCalls) == 0 {
-			// No tool calls, return the response
-			if a.enableMemory && a.memory != nil {
-				// Store conversation in memory
-				mem := &memory.Memory{}
-				a.memory.AddMemory(ctx, mem)
+		// Execution loop with tool calls
+		for i := 0; i < a.maxIterations; i++ {
+			// Get tool schemas if enabled
+			var toolSchemas []map[string]interface{}
+			if a.enableTools {
+				toolSchemas = a.tools.ToJSONSchemas()
 			}
-			return response.Content, nil
-		}
 
-		// Execute tool calls
-		for _, toolCall := range response.ToolCalls {
-			result, err := a.tools.Execute(ctx, toolCall.Name, toolCall.Args)
+			// Call LLM
+			response, err := a.llm.Generate(mwCtx.Context(), a.ctx.GetMessages(), toolSchemas)
 			if err != nil {
-				result = fmt.Sprintf("Error executing tool %s: %v", toolCall.Name, err)
+				return fmt.Errorf("LLM generation failed: %w", err)
 			}
 
-			// Add tool response
-			toolMsg := message.NewToolResponseMessage(toolCall.ID, result)
-			a.AddMessage(toolMsg)
+			a.AddMessage(response)
+			mwCtx.Response = response
+
+			// Check if there are tool calls
+			if len(response.ToolCalls) == 0 {
+				// No tool calls, return the response
+				if a.enableMemory && a.memory != nil {
+					// Store conversation in memory
+					mem := &memory.Memory{}
+					a.memory.AddMemory(mwCtx.Context(), mem)
+				}
+				return nil
+			}
+
+			// Execute tool calls
+			for _, toolCall := range response.ToolCalls {
+				result, err := a.tools.Execute(mwCtx.Context(), toolCall.Name, toolCall.Args)
+				if err != nil {
+					result = fmt.Sprintf("Error executing tool %s: %v", toolCall.Name, err)
+				}
+
+				// Add tool response
+				toolMsg := message.NewToolResponseMessage(toolCall.ID, result)
+				a.AddMessage(toolMsg)
+			}
+
+			// Continue loop to get final response
 		}
 
-		// Continue loop to get final response
+		mwCtx.Error = fmt.Errorf("max iterations (%d) reached", a.maxIterations)
+		return mwCtx.Error
+	})
+
+	if err != nil {
+		return "", err
 	}
 
-	return "", fmt.Errorf("max iterations (%d) reached", a.maxIterations)
+	if mwCtx.Response != nil {
+		return mwCtx.Response.Content, nil
+	}
+
+	return "", fmt.Errorf("no response generated")
 }
 
 // Stream executes the agent with streaming responses

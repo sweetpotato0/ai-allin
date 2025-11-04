@@ -220,12 +220,63 @@ All examples are organized in `examples/` directory:
 ✅ Claude provider (using official anthropic-sdk-go SDK)
 ✅ Parallel, sequential, and conditional task runners
 ✅ Comprehensive examples demonstrating all features
+✅ Streaming LLM response support
+✅ Middleware support for extensible request/response processing
+
+## Middleware System
+
+The framework includes a flexible middleware system for request/response processing:
+
+### Middleware Interface
+
+```go
+type Middleware interface {
+    Name() string
+    Execute(ctx *Context, next Handler) error
+}
+
+type Handler func(*Context) error
+```
+
+### Built-in Middleware
+
+1. **RequestLogger** - Logs incoming requests
+2. **ResponseLogger** - Logs outgoing responses
+3. **InputValidator** - Validates and cleans input
+4. **ResponseFilter** - Filters or transforms responses
+5. **ContextEnricher** - Adds metadata to context
+6. **ErrorHandler** - Handles errors in the pipeline
+7. **RateLimiter** - Rate limiting support
+
+### Usage Example
+
+```go
+ag := agent.New(
+    agent.WithProvider(llm),
+    agent.WithMiddleware(middleware.NewRequestLogger(func(msg string) {
+        fmt.Println(msg)
+    })),
+    agent.WithMiddleware(middleware.NewInputValidator(func(input string) error {
+        if len(input) > 1000 {
+            return errors.New("input too long")
+        }
+        return nil
+    })),
+)
+```
+
+### Middleware Chain Execution
+
+Middlewares are executed in order, with each middleware able to:
+- Inspect or modify the request context
+- Perform pre-processing before LLM call
+- Perform post-processing after LLM response
+- Stop execution and return an error
+- Pass control to the next middleware
 
 ## Future Enhancements
 
 - Additional storage backends (PostgreSQL, MongoDB)
-- Streaming LLM response support
 - Vector search for memory
-- Middleware support
 - Additional LLM provider integrations
 
