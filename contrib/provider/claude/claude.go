@@ -16,14 +16,16 @@ import (
 type Config struct {
 	APIKey      string
 	Model       string
+	BaseURL     string
 	MaxTokens   int64
 	Temperature float64
 }
 
 // DefaultConfig returns default Claude configuration
-func DefaultConfig(apiKey string) *Config {
+func DefaultConfig(apiKey, baseURL string) *Config {
 	return &Config{
 		APIKey:      apiKey,
+		BaseURL:     baseURL,
 		Model:       "claude-3-5-sonnet-20241022",
 		MaxTokens:   4096,
 		Temperature: 0.7,
@@ -39,10 +41,19 @@ type Provider struct {
 // New creates a new Claude provider using official SDK
 func New(config *Config) *Provider {
 	if config.Model == "" {
-		config.Model = "claude-3-5-sonnet-20241022"
+		config.Model = "claude-sonnet-4-5-20250929"
 	}
 
-	client := anthropic.NewClient(option.WithAPIKey(config.APIKey))
+	options := []option.RequestOption{
+		option.WithAPIKey(config.APIKey),
+		option.WithAuthToken(""),
+	}
+
+	if config.BaseURL != "" {
+		options = append(options, option.WithBaseURL(config.BaseURL))
+	}
+
+	client := anthropic.NewClient(options...)
 
 	return &Provider{
 		config: config,

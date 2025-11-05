@@ -475,7 +475,7 @@ func (p *ECommerceServicePlatform) HandleCustomerInquiry(
 	log.Printf("✓ 客户验证成功: %s (VIP等级: %s)\n", customer.Name, customer.VIPLevel)
 
 	// 2. 创建Session（代表这个客户的本次服务会话）
-	sessionID := fmt.Sprintf("cs_%s_%d", customerID, time.Now().Unix())
+	sessionID := fmt.Sprintf("cs_%s_%d", customerID, time.Now().UnixNano())
 	csAgent := p.agentFactory.CreateCustomerServiceAgent("cs_agent")
 
 	// 3. 配置Agent中间件
@@ -501,10 +501,14 @@ func (p *ECommerceServicePlatform) HandleCustomerInquiry(
 	p.metrics.SuccessfulRequests++
 
 	// 6. 生成工单
+	subject := inquiry
+	if len(inquiry) > 50 {
+		subject = inquiry[:50]
+	}
 	ticket := &Ticket{
 		TicketID:    fmt.Sprintf("TKT_%d", time.Now().Unix()),
 		CustomerID:  customerID,
-		Subject:     inquiry[:50],
+		Subject:     subject,
 		Priority:    p.determinePriority(customer),
 		Status:      "open",
 		CreatedAt:   time.Now(),
@@ -533,7 +537,7 @@ func (p *ECommerceServicePlatform) MultiTurnConversationScenario(customerID stri
 	log.Printf("客户ID: %s\n", customerID)
 
 	// 创建一个长期Session（一个用户会话）
-	sessionID := fmt.Sprintf("conv_%s_%d", customerID, time.Now().Unix())
+	sessionID := fmt.Sprintf("conv_%s_%d", customerID, time.Now().UnixNano())
 	csAgent := p.agentFactory.CreateCustomerServiceAgent("cs_agent")
 	p.configureAgentMiddleware(csAgent, sessionID, customerID)
 
@@ -600,7 +604,7 @@ func (p *ECommerceServicePlatform) MultiAgentOrchestration(customerID string) er
 	log.Printf("【阶段1】客服Agent处理客户问题\n")
 	log.Printf("──────────────────────────\n")
 
-	csSessionID := fmt.Sprintf("cs_%s_%d", customerID, time.Now().Unix())
+	csSessionID := fmt.Sprintf("cs_%s_%d", customerID, time.Now().UnixNano())
 	csAgent := p.agentFactory.CreateCustomerServiceAgent("cs_agent")
 	p.configureAgentMiddleware(csAgent, csSessionID, customerID)
 
@@ -618,7 +622,7 @@ func (p *ECommerceServicePlatform) MultiAgentOrchestration(customerID string) er
 	log.Printf("【阶段2】运营Agent分析客户价值\n")
 	log.Printf("──────────────────────────\n")
 
-	opSessionID := fmt.Sprintf("op_%s_%d", customerID, time.Now().Unix())
+	opSessionID := fmt.Sprintf("op_%s_%d", customerID, time.Now().UnixNano())
 	opAgent := p.agentFactory.CreateOperationAgent("op_agent")
 	p.configureAgentMiddleware(opAgent, opSessionID, customerID)
 
@@ -637,7 +641,7 @@ func (p *ECommerceServicePlatform) MultiAgentOrchestration(customerID string) er
 	log.Printf("【阶段3】QA Agent审查服务质量\n")
 	log.Printf("──────────────────────────\n")
 
-	qaSessionID := fmt.Sprintf("qa_%s_%d", customerID, time.Now().Unix())
+	qaSessionID := fmt.Sprintf("qa_%s_%d", customerID, time.Now().UnixNano())
 	qaAgent := p.agentFactory.CreateQAAgent("qa_agent")
 	p.configureAgentMiddleware(qaAgent, qaSessionID, customerID)
 
@@ -657,7 +661,7 @@ func (p *ECommerceServicePlatform) MultiAgentOrchestration(customerID string) er
 	log.Printf("【阶段4】知识管理Agent更新知识库\n")
 	log.Printf("──────────────────────────\n")
 
-	kbSessionID := fmt.Sprintf("kb_%s_%d", customerID, time.Now().Unix())
+	kbSessionID := fmt.Sprintf("kb_%s_%d", customerID, time.Now().UnixNano())
 	kbAgent := p.agentFactory.CreateKnowledgeAgent("kb_agent")
 	p.configureAgentMiddleware(kbAgent, kbSessionID, customerID)
 
@@ -707,7 +711,7 @@ func (p *ECommerceServicePlatform) ParallelCustomerHandling(customerCount int) {
 
 		// 为每个客户创建一个代理和任务
 		csAgent := p.agentFactory.CreateCustomerServiceAgent(fmt.Sprintf("cs_agent_%d", i))
-		sessionID := fmt.Sprintf("parallel_%s_%d", custID, time.Now().Unix()+int64(i))
+		sessionID := fmt.Sprintf("parallel_%s_%d", custID, time.Now().UnixNano()+int64(i))
 		p.configureAgentMiddleware(csAgent, sessionID, custID)
 
 		task := &runner.Task{
