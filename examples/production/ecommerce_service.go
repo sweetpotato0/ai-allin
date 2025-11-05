@@ -15,6 +15,7 @@ import (
 	"github.com/sweetpotato0/ai-allin/middleware/limiter"
 	"github.com/sweetpotato0/ai-allin/middleware/logger"
 	"github.com/sweetpotato0/ai-allin/prompt"
+	"github.com/sweetpotato0/ai-allin/runner"
 	"github.com/sweetpotato0/ai-allin/session"
 	"github.com/sweetpotato0/ai-allin/tool"
 )
@@ -37,14 +38,14 @@ type Customer struct {
 
 // Order 订单信息
 type Order struct {
-	OrderID      string
-	CustomerID   string
-	Items        []OrderItem
-	TotalAmount  float64
-	Status       string // "pending", "shipped", "delivered", "returned"
-	CreatedAt    time.Time
-	UpdatedAt    time.Time
-	TrackingURL  string
+	OrderID     string
+	CustomerID  string
+	Items       []OrderItem
+	TotalAmount float64
+	Status      string // "pending", "shipped", "delivered", "returned"
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+	TrackingURL string
 }
 
 type OrderItem struct {
@@ -89,12 +90,13 @@ type KBArticle struct {
 // ECommerceServicePlatform 电商服务平台
 type ECommerceServicePlatform struct {
 	// 核心组件
-	sessionManager    *session.Manager
-	agentFactory      *AgentFactory
-	vectorStore       *MockVectorStore
-	memoryStore       memory.MemoryStore
-	knowledgeBase     *KnowledgeBase
-	promptTemplates   *prompt.Manager
+	sessionManager  *session.Manager
+	agentFactory    *AgentFactory
+	vectorStore     *MockVectorStore
+	memoryStore     memory.MemoryStore
+	knowledgeBase   *KnowledgeBase
+	promptTemplates *prompt.Manager
+	parallelRunner  *runner.ParallelRunner
 
 	// 业务数据
 	customers      map[string]*Customer
@@ -109,12 +111,12 @@ type ECommerceServicePlatform struct {
 }
 
 type PlatformMetrics struct {
-	TotalRequests      int64
-	SuccessfulRequests int64
-	FailedRequests     int64
+	TotalRequests       int64
+	SuccessfulRequests  int64
+	FailedRequests      int64
 	AverageResponseTime time.Duration
-	ActiveSessions     int
-	mu                 sync.RWMutex
+	ActiveSessions      int
+	mu                  sync.RWMutex
 }
 
 // AgentFactory 高级Agent工厂
@@ -138,14 +140,15 @@ func NewECommerceServicePlatform(llmProvider agent.LLMClient, memStore memory.Me
 			vectorStore: NewMockVectorStore(),
 			memoryStore: memStore,
 		},
-		vectorStore:  NewMockVectorStore(),
-		memoryStore:  memStore,
-		knowledgeBase: &KnowledgeBase{articles: make(map[string]KBArticle)},
+		vectorStore:     NewMockVectorStore(),
+		memoryStore:     memStore,
+		knowledgeBase:   &KnowledgeBase{articles: make(map[string]KBArticle)},
 		promptTemplates: prompt.NewManager(),
-		customers:      make(map[string]*Customer),
-		orders:         make(map[string]*Order),
-		tickets:        make(map[string]*Ticket),
-		metrics:        &PlatformMetrics{},
+		parallelRunner:  runner.NewParallelRunner(10), // 最大并发10个任务
+		customers:       make(map[string]*Customer),
+		orders:          make(map[string]*Order),
+		tickets:         make(map[string]*Ticket),
+		metrics:         &PlatformMetrics{},
 	}
 
 	// 初始化提示词模板
@@ -378,6 +381,7 @@ func (af *AgentFactory) CreateCustomerServiceAgent(agentID string) *agent.Agent 
 		agent.WithTemperature(0.6),
 		agent.WithMemory(af.memoryStore),
 		agent.WithTools(true),
+		agent.WithProvider(af.llmProvider),
 	)
 
 	return ag
@@ -498,13 +502,13 @@ func (p *ECommerceServicePlatform) HandleCustomerInquiry(
 
 	// 6. 生成工单
 	ticket := &Ticket{
-		TicketID:   fmt.Sprintf("TKT_%d", time.Now().Unix()),
-		CustomerID: customerID,
-		Subject:    inquiry[:50],
-		Priority:   p.determinePriority(customer),
-		Status:     "open",
-		CreatedAt:  time.Now(),
-		AssignedTo: "cs_agent",
+		TicketID:    fmt.Sprintf("TKT_%d", time.Now().Unix()),
+		CustomerID:  customerID,
+		Subject:     inquiry[:50],
+		Priority:    p.determinePriority(customer),
+		Status:      "open",
+		CreatedAt:   time.Now(),
+		AssignedTo:  "cs_agent",
 		Description: inquiry,
 	}
 
@@ -683,9 +687,8 @@ func (p *ECommerceServicePlatform) MultiAgentOrchestration(customerID string) er
 
 // ParallelCustomerHandling 并行处理多个客户
 func (p *ECommerceServicePlatform) ParallelCustomerHandling(customerCount int) {
-	log.Printf("\n=== 并行处理%d个客户的咨询 ===\n", customerCount)
+	log.Printf("\n=== 使用ParallelRunner并行处理%d个客户的咨询 ===\n", customerCount)
 
-	var wg sync.WaitGroup
 	inquiries := []string{
 		"我的订单什么时候到？",
 		"这个产品有问题，我要退货",
@@ -696,22 +699,53 @@ func (p *ECommerceServicePlatform) ParallelCustomerHandling(customerCount int) {
 
 	customerIDs := []string{"CUST001", "CUST002", "CUST003"}
 
+	// 准备任务列表
+	tasks := make([]*runner.Task, 0, customerCount)
 	for i := 0; i < customerCount; i++ {
-		wg.Add(1)
-		go func(idx int) {
-			defer wg.Done()
-			custID := customerIDs[idx%len(customerIDs)]
-			inquiry := inquiries[idx%len(inquiries)]
+		custID := customerIDs[i%len(customerIDs)]
+		inquiry := inquiries[i%len(inquiries)]
 
-			_, err := p.HandleCustomerInquiry(custID, inquiry)
-			if err != nil {
-				log.Printf("错误处理客户%d: %v\n", idx+1, err)
-			}
-		}(i)
+		// 为每个客户创建一个代理和任务
+		csAgent := p.agentFactory.CreateCustomerServiceAgent(fmt.Sprintf("cs_agent_%d", i))
+		sessionID := fmt.Sprintf("parallel_%s_%d", custID, time.Now().Unix()+int64(i))
+		p.configureAgentMiddleware(csAgent, sessionID, custID)
+
+		task := &runner.Task{
+			ID:    fmt.Sprintf("task_%d_%s", i, custID),
+			Agent: csAgent,
+			Input: inquiry,
+		}
+		tasks = append(tasks, task)
 	}
 
-	wg.Wait()
-	log.Printf("✓ 已处理%d个客户咨询\n", customerCount)
+	// 使用ParallelRunner并行执行任务
+	log.Printf("启动ParallelRunner执行%d个并发任务...\n", len(tasks))
+	startTime := time.Now()
+
+	results := p.parallelRunner.RunParallel(context.Background(), tasks)
+
+	elapsed := time.Since(startTime)
+	log.Printf("✓ 并行处理完成，耗时: %.2f秒\n\n", elapsed.Seconds())
+
+	// 分析结果
+	successCount := 0
+	failureCount := 0
+
+	for _, result := range results {
+		if result.Error != nil {
+			failureCount++
+			log.Printf("❌ 任务%s失败: %v\n", result.TaskID, result.Error)
+		} else {
+			successCount++
+			log.Printf("✓ 任务%s成功 (输出长度: %d字符)\n", result.TaskID, len(result.Output))
+		}
+	}
+
+	log.Printf("\n【并行执行统计】\n")
+	log.Printf("成功任务: %d\n", successCount)
+	log.Printf("失败任务: %d\n", failureCount)
+	log.Printf("总任务数: %d\n", len(results))
+	log.Printf("平均响应时间: %.2f秒/任务\n", elapsed.Seconds()/float64(len(results)))
 }
 
 // AnalyzeOperationalMetrics 分析运营指标
@@ -729,7 +763,7 @@ func (p *ECommerceServicePlatform) AnalyzeOperationalMetrics() {
 	log.Printf("失败请求:        %d (%.1f%%)\n",
 		p.metrics.FailedRequests,
 		float64(p.metrics.FailedRequests)*100/float64(p.metrics.TotalRequests))
-	log.Printf("平均响应时间:    %.2f ms\n", p.metrics.AverageResponseTime.Milliseconds())
+	log.Printf("平均响应时间:    %.2f ms\n", float64(p.metrics.AverageResponseTime.Milliseconds()))
 	log.Printf("当前活跃Sessions: %d\n\n", p.sessionManager.Count())
 
 	// 客户和订单统计
@@ -852,4 +886,15 @@ func (m *MockVectorStore) DeleteEmbedding(ctx context.Context, id string) error 
 
 func (m *MockVectorStore) SearchSimilar(ctx context.Context, query string, k int) ([]map[string]interface{}, error) {
 	return []map[string]interface{}{}, nil
+}
+
+// MockMemoryStore 模拟内存存储实现（用于测试）
+type MockMemoryStore struct{}
+
+func (m *MockMemoryStore) AddMemory(ctx context.Context, mem *memory.Memory) error {
+	return nil
+}
+
+func (m *MockMemoryStore) SearchMemory(ctx context.Context, query string) ([]*memory.Memory, error) {
+	return []*memory.Memory{}, nil
 }

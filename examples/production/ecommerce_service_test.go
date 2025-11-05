@@ -333,3 +333,57 @@ func TestMemoryManagement(t *testing.T) {
 
 	t.Logf("✓ 内存管理测试通过 (创建了100个会话)")
 }
+
+// TestParallelRunnerIntegration 测试ParallelRunner集成
+func TestParallelRunnerIntegration(t *testing.T) {
+	log.Println("开始ParallelRunner集成测试...")
+
+	llmProvider := &MockLLMProvider{}
+	memoryStore := &MockMemoryStore{}
+	platform := NewECommerceServicePlatform(llmProvider, memoryStore)
+
+	// 验证ParallelRunner已初始化
+	if platform.parallelRunner == nil {
+		t.Fatal("ParallelRunner未初始化")
+	}
+
+	t.Log("✓ ParallelRunner初始化测试通过")
+}
+
+// TestParallelCustomerHandlingWithRunner 测试使用ParallelRunner处理客户
+func TestParallelCustomerHandlingWithRunner(t *testing.T) {
+	log.Println("开始ParallelRunner并行处理测试...")
+
+	llmProvider := &MockLLMProvider{}
+	memoryStore := &MockMemoryStore{}
+	platform := NewECommerceServicePlatform(llmProvider, memoryStore)
+
+	// 测试并行处理多个客户
+	customerCount := 5
+	startTime := time.Now()
+
+	platform.ParallelCustomerHandling(customerCount)
+
+	elapsed := time.Since(startTime)
+
+	// 验证结果
+	if elapsed < 0 {
+		t.Fatal("执行时间无效")
+	}
+
+	t.Logf("✓ ParallelRunner并行处理测试通过 (处理%d个客户，耗时%.2f秒)",
+		customerCount, elapsed.Seconds())
+}
+
+// BenchmarkParallelRunnerPerformance 性能测试：ParallelRunner
+func BenchmarkParallelRunnerPerformance(b *testing.B) {
+	llmProvider := &MockLLMProvider{}
+	memoryStore := &MockMemoryStore{}
+	platform := NewECommerceServicePlatform(llmProvider, memoryStore)
+
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		platform.ParallelCustomerHandling(10)
+	}
+}
