@@ -7,66 +7,9 @@ import (
 
 	"github.com/sweetpotato0/ai-allin/agent"
 	"github.com/sweetpotato0/ai-allin/contrib/provider/claude"
-	"github.com/sweetpotato0/ai-allin/memory"
+	"github.com/sweetpotato0/ai-allin/memory/store"
 	"github.com/sweetpotato0/ai-allin/message"
 )
-
-// InMemoryMemoryStore 内存存储实现
-type InMemoryMemoryStore struct {
-	memories map[string]*memory.Memory
-}
-
-// NewInMemoryMemoryStore 创建内存存储
-func NewInMemoryMemoryStore() *InMemoryMemoryStore {
-	return &InMemoryMemoryStore{
-		memories: make(map[string]*memory.Memory),
-	}
-}
-
-func (m *InMemoryMemoryStore) AddMemory(ctx context.Context, mem *memory.Memory) error {
-	if mem == nil || mem.ID == "" {
-		return nil
-	}
-	m.memories[mem.ID] = mem
-	return nil
-}
-
-func (m *InMemoryMemoryStore) SearchMemory(ctx context.Context, query string) ([]*memory.Memory, error) {
-	var results []*memory.Memory
-	for _, mem := range m.memories {
-		results = append(results, mem)
-	}
-	return results, nil
-}
-
-func (m *InMemoryMemoryStore) GetMemoryByID(ctx context.Context, id string) (*memory.Memory, error) {
-	if mem, ok := m.memories[id]; ok {
-		return mem, nil
-	}
-	return nil, nil
-}
-
-func (m *InMemoryMemoryStore) UpdateMemory(ctx context.Context, id string, content string, metadata map[string]interface{}) error {
-	if mem, ok := m.memories[id]; ok {
-		mem.Content = content
-		mem.Metadata = metadata
-	}
-	return nil
-}
-
-func (m *InMemoryMemoryStore) DeleteMemory(ctx context.Context, id string) error {
-	delete(m.memories, id)
-	return nil
-}
-
-func (m *InMemoryMemoryStore) Clear(ctx context.Context) error {
-	m.memories = make(map[string]*memory.Memory)
-	return nil
-}
-
-func (m *InMemoryMemoryStore) Count(ctx context.Context) (int, error) {
-	return len(m.memories), nil
-}
 
 // MockLLMProvider 模拟LLM提供商（备用，当API密钥不可用时使用）
 type MockLLMProvider struct{}
@@ -121,8 +64,8 @@ func main() {
 		log.Println("✓ 使用Mock LLM提供商（测试模式）\n")
 	}
 
-	// 创建内存存储
-	memoryStore := NewInMemoryMemoryStore()
+	// 创建内存存储（使用框架内置实现）
+	memoryStore := store.NewInMemoryStore()
 
 	// 初始化平台
 	platform := NewECommerceServicePlatform(llmProvider, memoryStore)
