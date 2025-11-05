@@ -1,0 +1,272 @@
+# 生产级电商智能客服平台配置文件
+# Production E-Commerce AI Customer Service Platform Configuration
+
+# ================================
+# 基础配置
+# ================================
+[app]
+name = "E-Commerce AI Customer Service Platform"
+version = "1.0.0"
+environment = "production"
+log_level = "info"
+
+# ================================
+# LLM配置
+# ================================
+[llm]
+# 支持的提供商: openai, claude, groq, cohere, gemini
+provider = "openai"
+model = "gpt-4"
+temperature = 0.6
+max_tokens = 2000
+timeout_seconds = 30
+
+# OpenAI配置
+[llm.openai]
+api_key = "${OPENAI_API_KEY}"
+api_base = "https://api.openai.com/v1"
+organization = "your-org-id"
+
+# Claude配置
+[llm.claude]
+api_key = "${CLAUDE_API_KEY}"
+model = "claude-3-sonnet-20240229"
+
+# ================================
+# 数据库配置
+# ================================
+[database]
+# PostgreSQL (推荐用于向量存储)
+type = "postgresql"
+host = "localhost"
+port = 5432
+username = "postgres"
+password = "${DB_PASSWORD}"
+database = "ecommerce_service"
+ssl_mode = "require"
+max_connections = 50
+connection_timeout = 30
+
+# Redis配置 (用于缓存和会话存储)
+[redis]
+host = "localhost"
+port = 6379
+password = "${REDIS_PASSWORD}"
+db = 0
+max_connections = 100
+ttl_seconds = 3600
+
+# ================================
+# 内存配置
+# ================================
+[memory]
+# 可选: inmemory, redis, postgres, mongodb
+backend = "postgres"
+max_size = 10000
+enable_vector_search = true
+embedding_dimension = 1536
+
+# ================================
+# 向量存储配置 (pgvector)
+# ================================
+[vector]
+backend = "pgvector"
+host = "localhost"
+port = 5432
+username = "postgres"
+password = "${DB_PASSWORD}"
+database = "ecommerce_service"
+table = "embeddings"
+dimensions = 1536
+index_type = "ivfflat"  # 或 "hnsw"
+
+# ================================
+# Agent配置
+# ================================
+[agents.customer_service]
+name = "customer_service_agent"
+role = "客服代理"
+description = "处理客户咨询和问题"
+max_iterations = 8
+temperature = 0.6
+enable_memory = true
+enable_tools = true
+enable_streaming = false
+
+[agents.operation]
+name = "operation_agent"
+role = "运营分析"
+description = "分析运营数据和趋势"
+max_iterations = 5
+temperature = 0.3  # 分析需要更低的温度
+enable_memory = true
+enable_tools = true
+
+[agents.qa]
+name = "qa_agent"
+role = "质量保证"
+description = "审查服务质量"
+max_iterations = 3
+temperature = 0.2  # QA需要最低的温度
+enable_memory = true
+enable_tools = false
+
+[agents.knowledge]
+name = "knowledge_agent"
+role = "知识管理"
+description = "管理知识库"
+max_iterations = 5
+temperature = 0.4
+enable_memory = true
+enable_tools = true
+
+# ================================
+# Middleware配置
+# ================================
+[middleware]
+enable_request_logger = true
+enable_error_handler = true
+enable_rate_limiter = true
+enable_context_enricher = true
+
+# 速率限制
+[middleware.rate_limiter]
+requests_per_second = 100
+burst_size = 200
+window_size_seconds = 1
+
+# 请求日志
+[middleware.request_logger]
+log_level = "info"
+log_to_file = true
+log_file_path = "/var/log/ecommerce-service/requests.log"
+max_log_size_mb = 100
+max_backups = 10
+
+# 错误处理
+[middleware.error_handler]
+enable_recovery = true
+enable_metrics = true
+enable_alerting = true
+
+# ================================
+# Session配置
+# ================================
+[session]
+max_sessions = 10000
+session_timeout_seconds = 1800  # 30分钟
+enable_persistence = true
+persistence_backend = "redis"
+cleanup_interval_seconds = 300
+
+# ================================
+# Context配置
+# ================================
+[context]
+max_messages = 100
+max_message_size_bytes = 10000
+enable_compression = true
+enable_summarization = true  # 对话过长时自动总结
+
+# ================================
+# 工具配置
+# ================================
+[tools.query_order]
+enabled = true
+timeout_seconds = 5
+retry_count = 3
+
+[tools.process_refund]
+enabled = true
+timeout_seconds = 10
+require_approval = true
+approval_threshold = 1000  # 超过1000元的退款需要审批
+
+[tools.check_vip_status]
+enabled = true
+timeout_seconds = 2
+
+[tools.search_knowledge_base]
+enabled = true
+timeout_seconds = 3
+max_results = 5
+
+[tools.create_ticket]
+enabled = true
+timeout_seconds = 2
+
+[tools.add_customer_note]
+enabled = true
+timeout_seconds = 2
+
+# ================================
+# 监控和告警
+# ================================
+[monitoring]
+enable_metrics = true
+metrics_port = 9090
+enable_tracing = true
+tracing_sample_rate = 0.1
+enable_profiling = true
+
+# 告警配置
+[monitoring.alerts]
+error_rate_threshold = 0.05  # 5%错误率告警
+response_time_threshold_ms = 5000  # 5秒响应时间告警
+queue_length_threshold = 1000
+
+# ================================
+# 安全配置
+# ================================
+[security]
+enable_api_key_auth = true
+enable_rate_limiting = true
+enable_encryption = true
+tls_enabled = true
+tls_cert_path = "/etc/ssl/certs/server.crt"
+tls_key_path = "/etc/ssl/private/server.key"
+
+# ================================
+# 功能开关
+# ================================
+[features]
+enable_auto_escalation = true
+enable_sentiment_analysis = true
+enable_multi_agent_orchestration = true
+enable_knowledge_base_integration = true
+enable_customer_prediction = true
+enable_quality_monitoring = true
+enable_performance_optimization = true
+
+# ================================
+# 服务级别目标 (SLO)
+# ================================
+[slo]
+availability_target = 0.999  # 99.9%
+response_time_p99_ms = 2000  # 99%的请求在2秒内完成
+first_response_time_minutes = 1
+resolution_time_hours = 4
+customer_satisfaction_target = 4.5  # 5分制
+
+# ================================
+# 部署配置
+# ================================
+[deployment]
+port = 8080
+workers = 10
+max_request_size_mb = 10
+request_timeout_seconds = 30
+graceful_shutdown_timeout_seconds = 30
+
+# ================================
+# 日志配置
+# ================================
+[logging]
+level = "info"  # debug, info, warn, error
+format = "json"  # text 或 json
+output = "both"  # stdout, file, 或 both
+log_dir = "/var/log/ecommerce-service"
+max_size_mb = 100
+max_backups = 10
+max_age_days = 30
+compress = true
