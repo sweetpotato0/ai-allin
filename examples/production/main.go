@@ -5,15 +5,78 @@ import (
 	"log"
 	"os"
 
+	"github.com/sweetpotato0/ai-allin/agent"
+	"github.com/sweetpotato0/ai-allin/contrib/provider/claude"
 	"github.com/sweetpotato0/ai-allin/memory"
 	"github.com/sweetpotato0/ai-allin/message"
 )
 
-// MockLLMProvider 模拟LLM提供商
+// InMemoryMemoryStore 内存存储实现
+type InMemoryMemoryStore struct {
+	memories map[string]*memory.Memory
+}
+
+// NewInMemoryMemoryStore 创建内存存储
+func NewInMemoryMemoryStore() *InMemoryMemoryStore {
+	return &InMemoryMemoryStore{
+		memories: make(map[string]*memory.Memory),
+	}
+}
+
+func (m *InMemoryMemoryStore) AddMemory(ctx context.Context, mem *memory.Memory) error {
+	if mem == nil || mem.ID == "" {
+		return nil
+	}
+	m.memories[mem.ID] = mem
+	return nil
+}
+
+func (m *InMemoryMemoryStore) SearchMemory(ctx context.Context, query string) ([]*memory.Memory, error) {
+	var results []*memory.Memory
+	for _, mem := range m.memories {
+		results = append(results, mem)
+	}
+	return results, nil
+}
+
+func (m *InMemoryMemoryStore) GetMemoryByID(ctx context.Context, id string) (*memory.Memory, error) {
+	if mem, ok := m.memories[id]; ok {
+		return mem, nil
+	}
+	return nil, nil
+}
+
+func (m *InMemoryMemoryStore) UpdateMemory(ctx context.Context, id string, content string, metadata map[string]interface{}) error {
+	if mem, ok := m.memories[id]; ok {
+		mem.Content = content
+		mem.Metadata = metadata
+	}
+	return nil
+}
+
+func (m *InMemoryMemoryStore) DeleteMemory(ctx context.Context, id string) error {
+	delete(m.memories, id)
+	return nil
+}
+
+func (m *InMemoryMemoryStore) Clear(ctx context.Context) error {
+	m.memories = make(map[string]*memory.Memory)
+	return nil
+}
+
+func (m *InMemoryMemoryStore) Count(ctx context.Context) (int, error) {
+	return len(m.memories), nil
+}
+
+// MockLLMProvider 模拟LLM提供商（备用，当API密钥不可用时使用）
 type MockLLMProvider struct{}
 
+func NewMockLLMProvider() *MockLLMProvider {
+	return &MockLLMProvider{}
+}
+
 func (m *MockLLMProvider) Generate(ctx context.Context, messages []*message.Message, tools []map[string]interface{}) (*message.Message, error) {
-	// 模拟智能回复
+	// 返回一个简单的模拟响应
 	response := "感谢您的咨询！我已经查看了您的信息。根据您的问题，我会为您提供最佳解决方案。"
 	return message.NewMessage(message.RoleAssistant, response), nil
 }
@@ -21,17 +84,6 @@ func (m *MockLLMProvider) Generate(ctx context.Context, messages []*message.Mess
 func (m *MockLLMProvider) SetTemperature(temp float64) {}
 func (m *MockLLMProvider) SetMaxTokens(max int64)      {}
 func (m *MockLLMProvider) SetModel(model string)       {}
-
-// MockMemoryStore 模拟内存存储
-type MockMemoryStore struct{}
-
-func (m *MockMemoryStore) AddMemory(ctx context.Context, mem *memory.Memory) error {
-	return nil
-}
-
-func (m *MockMemoryStore) SearchMemory(ctx context.Context, query string) ([]*memory.Memory, error) {
-	return []*memory.Memory{}, nil
-}
 
 func main() {
 	// 配置日志
@@ -43,9 +95,36 @@ func main() {
 	log.Println("║   Production-Grade E-Commerce AI Customer Service Platform   ║")
 	log.Println("╚════════════════════════════════════════════════════════════════╝\n")
 
+	// 获取Claude API密钥
+	apiKey := os.Getenv("ANTHROPIC_API_KEY")
+	if apiKey == "" {
+		log.Println("⚠️  警告: 未设置 ANTHROPIC_API_KEY 环境变量")
+		log.Println("   使用本地测试模式")
+		log.Println("   设置方法: export ANTHROPIC_API_KEY=your-api-key\n")
+	}
+
+	// 初始化LLM提供商
+	var llmProvider agent.LLMClient
+
+	if apiKey != "" {
+		// 使用Claude提供商（框架内置）
+		config := claude.DefaultConfig(apiKey)
+		config.Model = "claude-3-5-sonnet-20241022"
+		config.Temperature = 0.7
+		config.MaxTokens = 1024
+
+		llmProvider = claude.New(config)
+		log.Println("✓ 使用Claude 3.5 Sonnet LLM提供商（框架内置）\n")
+	} else {
+		// 降级到Mock模式
+		llmProvider = NewMockLLMProvider()
+		log.Println("✓ 使用Mock LLM提供商（测试模式）\n")
+	}
+
+	// 创建内存存储
+	memoryStore := NewInMemoryMemoryStore()
+
 	// 初始化平台
-	llmProvider := &MockLLMProvider{}
-	memoryStore := &MockMemoryStore{}
 	platform := NewECommerceServicePlatform(llmProvider, memoryStore)
 
 	log.Println("✓ 平台初始化完成\n")
@@ -166,6 +245,15 @@ func main() {
 	log.Println("  - 扩展性: 易于添加新Agent和功能")
 	log.Println("  - 可靠性: Timeout控制，资源管理")
 	log.Println("  - 可观测性: 详细的日志和追踪")
+
+	if apiKey != "" {
+		log.Println("\n✓ Claude AI集成（框架内置）：")
+		log.Println("  - 使用Claude 3.5 Sonnet模型")
+		log.Println("  - 实时API调用")
+		log.Println("  - 自然语言理解和生成")
+		log.Println("  - 自动错误恢复和降级处理")
+		log.Println("  - 支持流式响应（可选）")
+	}
 
 	log.Println("\n╔════════════════════════════════════════════════════════════════╗")
 	log.Println("║ 演示完成！✓                                                    ║")
