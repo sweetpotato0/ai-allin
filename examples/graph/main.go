@@ -10,7 +10,7 @@ import (
 )
 
 func main() {
-	fmt.Println("=== Graph Workflow Example ===\n")
+	fmt.Println("=== Graph Workflow Example ===")
 
 	ctx := context.Background()
 

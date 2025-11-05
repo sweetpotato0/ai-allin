@@ -139,7 +139,7 @@ func TestAddMessage(t *testing.T) {
 func TestClearMessages(t *testing.T) {
 	agent := New(WithSystemPrompt("Test prompt"))
 	agent.AddMessage(message.NewMessage(message.RoleUser, "Test"))
-	
+
 	agent.ClearMessages()
 	messages := agent.GetMessages()
 
@@ -167,7 +167,7 @@ func TestSetMemory(t *testing.T) {
 func TestRegisterPrompt(t *testing.T) {
 	agent := New()
 
-	err := agent.RegisterPrompt("greeting", "Hello {{name}}")
+	err := agent.RegisterPrompt("greeting", "Hello {{.name}}")
 	if err != nil {
 		t.Errorf("Failed to register prompt: %v", err)
 	}

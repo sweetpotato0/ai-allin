@@ -8,7 +8,7 @@ import (
 )
 
 func main() {
-	fmt.Println("=== Context Management Example ===\n")
+	fmt.Println("=== Context Management Example ===")
 
 	// Create a new context with default max size (100 messages)
 	ctx := context.New()

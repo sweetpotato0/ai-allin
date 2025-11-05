@@ -1,3 +1,4 @@
+```go
 package main
 
 import (
@@ -13,7 +14,7 @@ import (
 // 【示例】使用Graph+Agent+Session构建复杂的客服工作流
 
 // BuildIntelligentCustomerServiceGraph 构建智能客服工作流
-// 
+//
 // 工作流特点：
 // 1. 使用Graph定义多个处理阶段
 // 2. 在Graph节点内维护Session，支持多轮对话
@@ -59,7 +60,7 @@ func (p *ECommerceServicePlatform) BuildIntelligentCustomerServiceGraph() *graph
 
 	// ─────────────────────────────────────────────────
 	// 【阶段2】问题分类：第1轮对话
-	// 
+	//
 	// 特点：
 	// - 使用Session维持对话历史
 	// - Agent会记录这一轮的消息
@@ -103,7 +104,7 @@ func (p *ECommerceServicePlatform) BuildIntelligentCustomerServiceGraph() *graph
 
 	// ─────────────────────────────────────────────────
 	// 【阶段3】信息收集：第2轮对话
-	// 
+	//
 	// 特点：
 	// - Session已保留第1轮的消息历史
 	// - Agent会在第1轮消息基础上继续对话
@@ -374,3 +375,4 @@ func min(a, b int) int {
 	}
 	return b
 }
+```

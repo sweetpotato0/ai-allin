@@ -12,7 +12,7 @@ import (
 )
 
 func main() {
-	fmt.Println("=== LLM Streaming Examples ===\n")
+	fmt.Println("=== LLM Streaming Examples ===")
 
 	// Example 1: OpenAI Streaming
 	fmt.Println("Example 1: OpenAI Provider with Streaming")
@@ -81,7 +81,7 @@ func claudeStreamingExample() {
 	ctx := context.Background()
 
 	// Create Claude provider
-	config := claude.DefaultConfig(apiKey)
+	config := claude.DefaultConfig(apiKey, os.Getenv("ANTHROPIC_BASE_URL"))
 	config.Temperature = 0.7
 	provider := claude.New(config)
 

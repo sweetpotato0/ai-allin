@@ -35,7 +35,7 @@ func (m *MockLLMClient) SetModel(model string) {
 }
 
 func main() {
-	fmt.Println("=== Middleware Examples with Separate Packages ===\n")
+	fmt.Println("=== Middleware Examples with Separate Packages ===")
 
 	// Example 1: Logger middleware
 	fmt.Println("Example 1: Logger Middleware")

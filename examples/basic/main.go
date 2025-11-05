@@ -29,7 +29,7 @@ func (m *MockLLMClient) SetModel(model string) {
 }
 
 func main() {
-	fmt.Println("=== Basic Agent Example ===\n")
+	fmt.Println("=== Basic Agent Example ===")
 
 	ctx := context.Background()
 

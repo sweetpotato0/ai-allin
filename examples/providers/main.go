@@ -12,7 +12,7 @@ import (
 )
 
 func main() {
-	fmt.Println("=== LLM Provider Examples ===\n")
+	fmt.Println("=== LLM Provider Examples ===")
 
 	// Example 1: Using OpenAI Provider
 	fmt.Println("Example 1: OpenAI Provider")
@@ -72,7 +72,7 @@ func claudeProviderExample() {
 	ctx := context.Background()
 
 	// Create Claude provider with default config
-	claudeConfig := claude.DefaultConfig(apiKey)
+	claudeConfig := claude.DefaultConfig(apiKey, os.Getenv("ANTHROPIC_BASE_URL"))
 	claudeProvider := claude.New(claudeConfig)
 
 	// Create agent with Claude provider

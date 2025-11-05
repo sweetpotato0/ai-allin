@@ -14,7 +14,7 @@ import (
 )
 
 func main() {
-	fmt.Println("=== Multiple LLM Providers Example ===\n")
+	fmt.Println("=== Multiple LLM Providers Example ===")
 
 	ctx := context.Background()
 
@@ -81,7 +81,7 @@ func claudeExample(ctx context.Context) {
 		return
 	}
 
-	config := claude.DefaultConfig(apiKey)
+	config := claude.DefaultConfig(apiKey, os.Getenv("ANTHROPIC_BASE_URL"))
 	provider := claude.New(config)
 
 	ag := agent.New(

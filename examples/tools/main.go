@@ -32,7 +32,7 @@ func (m *MockLLMClient) SetModel(model string) {
 }
 
 func main() {
-	fmt.Println("=== Tools Example ===\n")
+	fmt.Println("=== Tools Example ===")
 
 	ctx := context.Background()
 
@@ -97,7 +97,7 @@ func main() {
 		log.Fatalf("Failed to register tool: %v", err)
 	}
 
-	fmt.Println("Registered calculator tool with operations: add, subtract, multiply, divide\n")
+	fmt.Println("Registered calculator tool with operations: add, subtract, multiply, divide")
 
 	// Test tool execution directly
 	result, err := calculatorTool.Execute(ctx, map[string]interface{}{
