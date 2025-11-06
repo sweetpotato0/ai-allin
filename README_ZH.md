@@ -17,7 +17,7 @@
   - Redis 缓存
   - MongoDB 文档存储
   - PGVector 向量嵌入
-- **会话管理**: 对话会话跟踪和管理
+- **会话管理**: 对话会话跟踪和管理，支持单 agent 和多 agent 共享会话
 - **执行图**: 支持条件分支的工作流编排
 - **线程安全**: RWMutex 保护的并发访问
 - **配置验证**: 基于环境变量的配置与验证
@@ -104,6 +104,64 @@ func main() {
 }
 ```
 
+### Session 管理示例
+
+```go
+package main
+
+import (
+    "context"
+    "fmt"
+
+    "github.com/sweetpotato0/ai-allin/agent"
+    "github.com/sweetpotato0/ai-allin/contrib/provider/openai"
+    "github.com/sweetpotato0/ai-allin/session"
+    "github.com/sweetpotato0/ai-allin/session/store"
+)
+
+func main() {
+    ctx := context.Background()
+    
+    // 创建 LLM 提供商
+    llm := openai.New(&openai.Config{
+        APIKey: "your-api-key",
+        Model:  "gpt-4",
+    })
+
+    // 创建 session manager，使用 Option 模式注入 store 实现
+    mgr := session.NewManager(session.WithStore(store.NewInMemoryStore()))
+
+    // 创建单 agent session
+    ag := agent.New(agent.WithProvider(llm))
+    sess, err := mgr.Create(ctx, "session-1", ag)
+    if err != nil {
+        panic(err)
+    }
+
+    // 运行 session
+    response, err := sess.Run(ctx, "Hello")
+    if err != nil {
+        panic(err)
+    }
+    fmt.Println(response)
+
+    // 创建共享 session（多 agent 协作）
+    sharedSess, err := mgr.CreateShared(ctx, "shared-session")
+    if err != nil {
+        panic(err)
+    }
+
+    // 使用不同的 agent 在共享 session 中运行
+    agent1 := agent.New(agent.WithProvider(llm), agent.WithName("researcher"))
+    agent2 := agent.New(agent.WithProvider(llm), agent.WithName("solver"))
+    
+    resp1, _ := sharedSess.RunWithAgent(ctx, agent1, "收集信息")
+    resp2, _ := sharedSess.RunWithAgent(ctx, agent2, "基于信息提供解决方案")
+    
+    fmt.Println(resp1, resp2)
+}
+```
+
 ## 架构
 
 ### 核心包
@@ -116,7 +174,8 @@ func main() {
 - **middleware**: 请求处理中间件链
 - **prompt**: 提示词模板管理
 - **runner**: 并行任务执行
-- **session**: 会话管理
+- **session**: 会话管理，支持单 agent 和多 agent 共享会话
+  - **session/store**: 会话存储后端（InMemory、Redis 等）
 - **tool**: 工具注册和执行
 - **vector**: 向量嵌入存储和搜索
 

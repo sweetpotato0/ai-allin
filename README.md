@@ -17,7 +17,7 @@ A comprehensive, production-ready Go framework for building AI agents with strea
   - Redis with caching
   - MongoDB document storage
   - PGVector for embeddings
-- **Session Management**: Conversation session tracking and management
+- **Session Management**: Conversation session tracking and management, supporting single-agent and multi-agent shared sessions
 - **Execution Graphs**: Workflow orchestration with conditional branching
 - **Thread-Safe Operations**: RWMutex protected concurrent access
 - **Configuration Validation**: Environment-based configuration with validation
@@ -104,6 +104,64 @@ func main() {
 }
 ```
 
+### Session Management
+
+```go
+package main
+
+import (
+    "context"
+    "fmt"
+
+    "github.com/sweetpotato0/ai-allin/agent"
+    "github.com/sweetpotato0/ai-allin/contrib/provider/openai"
+    "github.com/sweetpotato0/ai-allin/session"
+    "github.com/sweetpotato0/ai-allin/session/store"
+)
+
+func main() {
+    ctx := context.Background()
+    
+    // Create LLM provider
+    llm := openai.New(&openai.Config{
+        APIKey: "your-api-key",
+        Model:  "gpt-4",
+    })
+
+    // Create session manager with Option pattern for store injection
+    mgr := session.NewManager(session.WithStore(store.NewInMemoryStore()))
+
+    // Create single-agent session
+    ag := agent.New(agent.WithProvider(llm))
+    sess, err := mgr.Create(ctx, "session-1", ag)
+    if err != nil {
+        panic(err)
+    }
+
+    // Run session
+    response, err := sess.Run(ctx, "Hello")
+    if err != nil {
+        panic(err)
+    }
+    fmt.Println(response)
+
+    // Create shared session (multi-agent collaboration)
+    sharedSess, err := mgr.CreateShared(ctx, "shared-session")
+    if err != nil {
+        panic(err)
+    }
+
+    // Run with different agents in shared session
+    agent1 := agent.New(agent.WithProvider(llm), agent.WithName("researcher"))
+    agent2 := agent.New(agent.WithProvider(llm), agent.WithName("solver"))
+    
+    resp1, _ := sharedSess.RunWithAgent(ctx, agent1, "Collect information")
+    resp2, _ := sharedSess.RunWithAgent(ctx, agent2, "Provide solution based on information")
+    
+    fmt.Println(resp1, resp2)
+}
+```
+
 ## Architecture
 
 ### Core Packages
@@ -116,7 +174,8 @@ func main() {
 - **middleware**: Middleware chain for request processing
 - **prompt**: Prompt template management
 - **runner**: Parallel task execution
-- **session**: Session management
+- **session**: Session management, supporting single-agent and multi-agent shared sessions
+  - **session/store**: Session storage backends (InMemory, Redis, etc.)
 - **tool**: Tool registration and execution
 - **vector**: Vector embedding storage and search
 
