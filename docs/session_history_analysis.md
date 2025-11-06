@@ -67,6 +67,25 @@ sess.Run(ctx, "用户消息1")  // Agent记录消息
 messages := sess.GetMessages()  // = agent.GetMessages()
 ```
 
+### 多个 Agent 共享同一个 Session
+
+当多个 Agent 需要围绕同一用户线程协作时，可使用 `session.Conversation` / `session.Orchestrator` 封装历史搬运逻辑：
+
+```go
+orchestrator := session.NewOrchestrator()
+
+// researcher 与 solver 交替执行，历史由 orchestrator 维护
+orchestrator.Run(ctx, "case-42", researcherAgent, "收集关键信息")
+orchestrator.Run(ctx, "case-42", solverAgent, "根据历史生成解决方案")
+```
+
+Orchestrator 在内部会：
+1. 将当前会话历史灌入 Agent；
+2. 调用 `agent.Run`；
+3. 把新的消息历史写回会话。
+
+开发者不再需要显式调用 `GetMessages` / `AddMessage`。
+
 ### 消息流向
 
 ```
@@ -465,4 +484,3 @@ graphs := []struct {
 | 需要并发执行吗? | ✅ 是 | 使用ParallelRunner |
 | 消息需要在State传递? | ❌ 否 | 由Session维护 |
 | Runner需要管理历史? | ❌ 否 | 由Agent/Graph负责 |
-

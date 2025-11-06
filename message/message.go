@@ -42,6 +42,56 @@ func NewMessage(role Role, content string) *Message {
 	}
 }
 
+// Clone creates a deep copy of the message.
+func Clone(msg *Message) *Message {
+	if msg == nil {
+		return nil
+	}
+	cloned := *msg
+	if msg.Metadata != nil {
+		cloned.Metadata = make(map[string]interface{}, len(msg.Metadata))
+		for k, v := range msg.Metadata {
+			cloned.Metadata[k] = v
+		}
+	}
+	if len(msg.ToolCalls) > 0 {
+		cloned.ToolCalls = make([]ToolCall, len(msg.ToolCalls))
+		for i, tc := range msg.ToolCalls {
+			cloned.ToolCalls[i] = cloneToolCall(tc)
+		}
+	}
+	return &cloned
+}
+
+// CloneMessages copies a slice of messages.
+func CloneMessages(msgs []*Message) []*Message {
+	if len(msgs) == 0 {
+		return nil
+	}
+	clones := make([]*Message, 0, len(msgs))
+	for _, msg := range msgs {
+		clones = append(clones, Clone(msg))
+	}
+	return clones
+}
+
+func cloneToolCall(call ToolCall) ToolCall {
+	cloned := ToolCall{
+		ID:   call.ID,
+		Name: call.Name,
+	}
+	if call.Args != nil {
+		cloned.Args = make(map[string]interface{}, len(call.Args))
+		for k, v := range call.Args {
+			cloned.Args[k] = v
+		}
+	}
+	if call.Response != "" {
+		cloned.Response = call.Response
+	}
+	return cloned
+}
+
 // NewToolCallMessage creates a message with tool calls
 func NewToolCallMessage(toolCalls []ToolCall) *Message {
 	return &Message{
