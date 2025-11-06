@@ -14,8 +14,6 @@ type Provider interface {
 	tool.Provider
 	// Client returns the underlying MCP client for advanced use cases.
 	Client() *Client
-	// ToolsChanged returns the change notification channel emitted by the MCP server.
-	ToolsChanged() <-chan struct{}
 }
 
 // Transport enumerates the supported MCP transport types.

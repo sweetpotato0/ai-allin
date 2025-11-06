@@ -45,6 +45,7 @@ type Agent struct {
 	providerMu     sync.Mutex
 	toolProviders  []tool.Provider
 	providerLoaded map[tool.Provider]bool
+	providerWatch  map[tool.Provider]context.CancelFunc
 }
 
 // Option is a function that configures an Agent
@@ -131,48 +132,110 @@ func (a *Agent) loadToolProviders(ctx context.Context) error {
 		return nil
 	}
 
-	a.providerMu.Lock()
-	providers := append([]tool.Provider(nil), a.toolProviders...)
-	a.providerMu.Unlock()
-
-	for _, provider := range providers {
+	for _, provider := range a.getToolProviders() {
 		if provider == nil {
 			continue
 		}
 
-		a.providerMu.Lock()
-		if a.providerLoaded[provider] {
-			a.providerMu.Unlock()
+		if a.isProviderLoaded(provider) {
 			continue
 		}
-		a.providerMu.Unlock()
 
-		tools, err := provider.Tools(ctx)
-		if err != nil {
-			return fmt.Errorf("load tools from provider: %w", err)
+		if err := a.updateProviderTools(ctx, provider); err != nil {
+			return err
 		}
 
-		for _, t := range tools {
-			if t == nil || t.Name == "" {
-				continue
-			}
-			if _, err := a.tools.Get(t.Name); err == nil {
-				continue
-			}
-			if err := a.tools.Register(t); err != nil {
-				return err
-			}
-		}
-
-		a.providerMu.Lock()
-		if a.providerLoaded == nil {
-			a.providerLoaded = make(map[tool.Provider]bool)
-		}
-		a.providerLoaded[provider] = true
-		a.providerMu.Unlock()
+		a.markProviderLoaded(provider)
+		a.startProviderWatcher(provider)
 	}
 
 	return nil
+}
+
+func (a *Agent) getToolProviders() []tool.Provider {
+	a.providerMu.Lock()
+	defer a.providerMu.Unlock()
+	return append([]tool.Provider(nil), a.toolProviders...)
+}
+
+func (a *Agent) isProviderLoaded(provider tool.Provider) bool {
+	a.providerMu.Lock()
+	defer a.providerMu.Unlock()
+	return a.providerLoaded[provider]
+}
+
+func (a *Agent) markProviderLoaded(provider tool.Provider) {
+	a.providerMu.Lock()
+	defer a.providerMu.Unlock()
+	if a.providerLoaded == nil {
+		a.providerLoaded = make(map[tool.Provider]bool)
+	}
+	a.providerLoaded[provider] = true
+}
+
+func (a *Agent) updateProviderTools(ctx context.Context, provider tool.Provider) error {
+	tools, err := provider.Tools(ctx)
+	if err != nil {
+		return fmt.Errorf("load tools from provider: %w", err)
+	}
+
+	for _, t := range tools {
+		if t == nil || t.Name == "" {
+			continue
+		}
+		if err := a.tools.Upsert(t); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (a *Agent) startProviderWatcher(provider tool.Provider) {
+	ch := provider.ToolsChanged()
+	if ch == nil {
+		return
+	}
+
+	a.providerMu.Lock()
+	if a.providerWatch == nil {
+		a.providerWatch = make(map[tool.Provider]context.CancelFunc)
+	}
+	if _, exists := a.providerWatch[provider]; exists {
+		a.providerMu.Unlock()
+		return
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	a.providerWatch[provider] = cancel
+	a.providerMu.Unlock()
+
+	go a.watchProvider(ctx, provider, ch)
+}
+
+func (a *Agent) watchProvider(ctx context.Context, provider tool.Provider, ch <-chan struct{}) {
+	defer a.removeProviderWatcher(provider)
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case _, ok := <-ch:
+			if !ok {
+				return
+			}
+			if err := a.updateProviderTools(ctx, provider); err != nil {
+				a.ctx.AddMessage(message.NewMessage(message.RoleSystem, fmt.Sprintf("Failed to refresh tools: %v", err)))
+			}
+		}
+	}
+}
+
+func (a *Agent) removeProviderWatcher(provider tool.Provider) {
+	a.providerMu.Lock()
+	defer a.providerMu.Unlock()
+	if cancel, ok := a.providerWatch[provider]; ok {
+		cancel()
+		delete(a.providerWatch, provider)
+	}
 }
 
 // New creates a new agent with the given options
@@ -190,6 +253,7 @@ func New(opts ...Option) *Agent {
 		ctx:            agentContext.New(),
 		middlewares:    middleware.NewChain(),
 		providerLoaded: make(map[tool.Provider]bool),
+		providerWatch:  make(map[tool.Provider]context.CancelFunc),
 	}
 
 	// Apply options
@@ -395,12 +459,6 @@ func (a *Agent) Clone() *Agent {
 
 	if len(a.toolProviders) > 0 {
 		cloned.toolProviders = append(cloned.toolProviders, a.toolProviders...)
-		if len(a.providerLoaded) > 0 {
-			cloned.providerLoaded = make(map[tool.Provider]bool, len(a.providerLoaded))
-			for provider, loaded := range a.providerLoaded {
-				cloned.providerLoaded[provider] = loaded
-			}
-		}
 	}
 
 	return cloned

@@ -19,9 +19,9 @@ type Parameter struct {
 
 // Tool represents a callable tool/function
 type Tool struct {
-	Name        string                 `json:"name"`
-	Description string                 `json:"description"`
-	Parameters  []Parameter            `json:"parameters"`
+	Name        string                                                        `json:"name"`
+	Description string                                                        `json:"description"`
+	Parameters  []Parameter                                                   `json:"parameters"`
 	Handler     func(context.Context, map[string]interface{}) (string, error) `json:"-"`
 }
 
@@ -113,6 +113,21 @@ func (r *Registry) Register(tool *Tool) error {
 
 	if _, exists := r.tools[tool.Name]; exists {
 		return fmt.Errorf("tool %s already registered", tool.Name)
+	}
+	r.tools[tool.Name] = tool
+	return nil
+}
+
+// Upsert adds or replaces a tool definition in the registry.
+func (r *Registry) Upsert(tool *Tool) error {
+	if tool == nil || tool.Name == "" {
+		return fmt.Errorf("tool name cannot be empty")
+	}
+
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.tools == nil {
+		r.tools = make(map[string]*Tool)
 	}
 	r.tools[tool.Name] = tool
 	return nil
