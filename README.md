@@ -10,6 +10,7 @@ A comprehensive, production-ready Go framework for building AI agents with strea
 - **Streaming Response Support**: Real-time streaming for all LLM providers
 - **Agent Framework**: Configurable agents with middleware, prompts, and memory
 - **Tool Integration**: Register and execute tools/functions
+- **Model Context Protocol (MCP) Support**: Connect over stdio or streamable HTTP (SSE), discover MCP tools, and invoke them through agents
 - **Multi-Backend Storage**:
   - In-Memory (development)
   - PostgreSQL with full-text search
@@ -63,6 +64,37 @@ func main() {
     }
 
     println(response)
+}
+```
+
+### MCP Integration
+
+```go
+package main
+
+import (
+    "context"
+    "log"
+
+    frameworkmcp "github.com/sweetpotato0/ai-allin/mcp"
+)
+
+func main() {
+    ctx := context.Background()
+
+    // Connect to an MCP server exposed over stdio (launched via command).
+    stdioClient, err := frameworkmcp.NewStdioClient(ctx, "my-mcp-server")
+    if err != nil {
+        log.Fatalf("connect stdio mcp: %v", err)
+    }
+    defer stdioClient.Close()
+
+    // Or connect to a remote server using the streamable HTTP (SSE) transport.
+    httpClient, err := frameworkmcp.NewStreamableClient(ctx, "https://example.com/mcp")
+    if err != nil {
+        log.Fatalf("connect streamable mcp: %v", err)
+    }
+    defer httpClient.Close()
 }
 ```
 

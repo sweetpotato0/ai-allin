@@ -10,6 +10,7 @@
 - **流式响应支持**: 所有 LLM 提供商的实时流式输出
 - **Agent 框架**: 支持中间件、提示词和记忆的可配置智能体
 - **工具集成**: 注册和执行工具/函数
+- **MCP 模型上下文协议支持**：支持 stdio 与流式 HTTP（SSE）连接，自动同步 MCP 工具并通过智能体调用
 - **多后端存储**:
   - 内存存储(开发环境)
   - PostgreSQL 全文搜索
@@ -63,6 +64,37 @@ func main() {
     }
 
     println(response)
+}
+```
+
+### MCP 集成示例
+
+```go
+package main
+
+import (
+    "context"
+    "log"
+
+    frameworkmcp "github.com/sweetpotato0/ai-allin/mcp"
+)
+
+func main() {
+    ctx := context.Background()
+
+    // 通过命令运行的 stdio MCP 服务器
+    stdioClient, err := frameworkmcp.NewStdioClient(ctx, "my-mcp-server")
+    if err != nil {
+        log.Fatalf("连接 stdio MCP 失败: %v", err)
+    }
+    defer stdioClient.Close()
+
+    // 通过流式 HTTP（SSE）连接远程 MCP 服务器
+    httpClient, err := frameworkmcp.NewStreamableClient(ctx, "https://example.com/mcp")
+    if err != nil {
+        log.Fatalf("连接 streamable MCP 失败: %v", err)
+    }
+    defer httpClient.Close()
 }
 ```
 
