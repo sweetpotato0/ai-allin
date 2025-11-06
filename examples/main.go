@@ -10,6 +10,7 @@ import (
 	"github.com/sweetpotato0/ai-allin/message"
 	"github.com/sweetpotato0/ai-allin/runner"
 	"github.com/sweetpotato0/ai-allin/session"
+	"github.com/sweetpotato0/ai-allin/session/store"
 	"github.com/sweetpotato0/ai-allin/tool"
 )
 
@@ -168,15 +169,15 @@ func sessionManagementExample() {
 	ctx := context.Background()
 	llm := &MockLLMClient{}
 
-	// Create session manager
-	mgr := session.NewManager()
+	// Create session manager with in-memory store
+	mgr := session.NewManager(session.WithStore(store.NewInMemoryStore()))
 
 	// Create multiple sessions
 	for i := 1; i <= 3; i++ {
 		sessionID := fmt.Sprintf("session-%d", i)
 		ag := agent.New(agent.WithProvider(llm))
 
-		sess, err := mgr.Create(sessionID, ag)
+		sess, err := mgr.Create(ctx, sessionID, ag)
 		if err != nil {
 			log.Printf("Error creating session: %v", err)
 			continue
@@ -193,9 +194,10 @@ func sessionManagementExample() {
 	}
 
 	// List all sessions
-	sessions := mgr.List()
+	sessions, _ := mgr.List(ctx)
 	fmt.Printf("Active sessions: %v\n", sessions)
-	fmt.Printf("Session count: %d\n", mgr.Count())
+	count, _ := mgr.Count(ctx)
+	fmt.Printf("Session count: %d\n", count)
 }
 
 func parallelExecutionExample() {

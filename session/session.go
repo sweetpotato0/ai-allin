@@ -2,11 +2,8 @@ package session
 
 import (
 	"context"
-	"fmt"
-	"sync"
 	"time"
 
-	"github.com/sweetpotato0/ai-allin/agent"
 	"github.com/sweetpotato0/ai-allin/message"
 )
 
@@ -19,7 +16,7 @@ const (
 	StateClosed   State = "closed"
 )
 
-// Session represents a conversation session with an agent
+// Session represents a conversation session with an agent.
 type Session interface {
 	// ID returns the session ID
 	ID() string
@@ -37,168 +34,51 @@ type Session interface {
 	Close() error
 }
 
-// session is the default implementation of Session
-type session struct {
+// Base provides common fields and methods for session implementations
+type Base struct {
 	id        string
-	agent     *agent.Agent
-	state     State
-	createdAt time.Time
-	updatedAt time.Time
-	mu        sync.RWMutex
-	metadata  map[string]interface{}
+	State     State
+	CreatedAt time.Time
+	UpdatedAt time.Time
+	Metadata  map[string]interface{}
 }
 
-// New creates a new session
-func New(id string, ag *agent.Agent) Session {
-	return &session{
+// NewBase initializes a new base session
+func NewBase(id string) Base {
+	return Base{
 		id:        id,
-		agent:     ag,
-		state:     StateActive,
-		createdAt: time.Now(),
-		updatedAt: time.Now(),
-		metadata:  make(map[string]interface{}),
+		State:     StateActive,
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+		Metadata:  make(map[string]interface{}),
 	}
 }
 
 // ID returns the session ID
-func (s *session) ID() string {
-	return s.id
+func (b *Base) ID() string {
+	return b.id
 }
 
-// Run executes the agent with input
-func (s *session) Run(ctx context.Context, input string) (string, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+// SetState updates the session state
+func (b *Base) SetState(state State) {
+	b.State = state
+	b.UpdatedAt = time.Now()
+}
 
-	if s.state != StateActive {
-		return "", fmt.Errorf("session is not active (state: %s)", s.state)
+// SetMetadata sets metadata for the session
+func (b *Base) SetMetadata(key string, value interface{}) {
+	if b.Metadata == nil {
+		b.Metadata = make(map[string]interface{})
 	}
-
-	s.updatedAt = time.Now()
-	return s.agent.Run(ctx, input)
+	b.Metadata[key] = value
+	b.UpdatedAt = time.Now()
 }
 
-// GetMessages returns all messages in the session
-func (s *session) GetMessages() []*message.Message {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	return s.agent.GetMessages()
-}
-
-// GetState returns the current session state
-func (s *session) GetState() State {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	return s.state
-}
-
-// Close closes the session
-func (s *session) Close() error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	if s.state == StateClosed {
-		return fmt.Errorf("session already closed")
+// GetMetadata returns metadata for the session
+func (b *Base) GetMetadata(key string) (interface{}, bool) {
+	if b.Metadata == nil {
+		return nil, false
 	}
-
-	s.state = StateClosed
-	s.updatedAt = time.Now()
-	return nil
+	value, ok := b.Metadata[key]
+	return value, ok
 }
-
-// Manager manages multiple sessions
-type Manager struct {
-	sessions map[string]Session
-	mu       sync.RWMutex
-}
-
-// NewManager creates a new session manager
-func NewManager() *Manager {
-	return &Manager{
-		sessions: make(map[string]Session),
-	}
-}
-
-// Create creates a new session
-func (m *Manager) Create(id string, ag *agent.Agent) (Session, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	if _, exists := m.sessions[id]; exists {
-		return nil, fmt.Errorf("session %s already exists", id)
-	}
-
-	sess := New(id, ag)
-	m.sessions[id] = sess
-	return sess, nil
-}
-
-// Get retrieves a session by ID
-func (m *Manager) Get(id string) (Session, error) {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-
-	sess, exists := m.sessions[id]
-	if !exists {
-		return nil, fmt.Errorf("session %s not found", id)
-	}
-	return sess, nil
-}
-
-// Delete removes a session
-func (m *Manager) Delete(id string) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	sess, exists := m.sessions[id]
-	if !exists {
-		return fmt.Errorf("session %s not found", id)
-	}
-
-	// Close the session before deleting
-	if err := sess.Close(); err != nil {
-		return err
-	}
-
-	delete(m.sessions, id)
-	return nil
-}
-
-// List returns all session IDs
-func (m *Manager) List() []string {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-
-	ids := make([]string, 0, len(m.sessions))
-	for id := range m.sessions {
-		ids = append(ids, id)
-	}
-	return ids
-}
-
-// Count returns the number of active sessions
-func (m *Manager) Count() int {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-	return len(m.sessions)
-}
-
-// CleanupInactive removes inactive sessions older than the specified duration
-func (m *Manager) CleanupInactive(maxAge time.Duration) int {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	count := 0
-	for id, sess := range m.sessions {
-		if sess.GetState() == StateInactive {
-			// Check if session is old enough to cleanup
-			// This would require additional metadata tracking
-			// For now, just mark it for cleanup
-			sess.Close()
-			delete(m.sessions, id)
-			count++
-		}
-	}
-	return count
-}
-

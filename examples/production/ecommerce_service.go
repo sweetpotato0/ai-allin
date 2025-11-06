@@ -17,6 +17,7 @@ import (
 	"github.com/sweetpotato0/ai-allin/prompt"
 	"github.com/sweetpotato0/ai-allin/runner"
 	"github.com/sweetpotato0/ai-allin/session"
+	"github.com/sweetpotato0/ai-allin/session/store"
 	"github.com/sweetpotato0/ai-allin/tool"
 )
 
@@ -134,7 +135,7 @@ type AgentFactory struct {
 // NewECommerceServicePlatform 创建电商服务平台
 func NewECommerceServicePlatform(llmProvider agent.LLMClient, memStore memory.MemoryStore) *ECommerceServicePlatform {
 	platform := &ECommerceServicePlatform{
-		sessionManager: session.NewManager(),
+		sessionManager: session.NewManager(session.WithStore(store.NewInMemoryStore())),
 		agentFactory: &AgentFactory{
 			llmProvider: llmProvider,
 			vectorStore: NewMockVectorStore(),
