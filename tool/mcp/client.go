@@ -2,7 +2,6 @@ package mcp
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -116,21 +115,6 @@ type ClientInfo struct {
 	Version string `json:"version"`
 }
 
-// ServerInfo contains information about the connected MCP server.
-type ServerInfo struct {
-	Name    string `json:"name"`
-	Title   string `json:"title,omitempty"`
-	Version string `json:"version"`
-}
-
-// InitializeResult captures the server response during MCP initialization.
-type InitializeResult struct {
-	ProtocolVersion string
-	Capabilities    map[string]any
-	ServerInfo      ServerInfo
-	Instructions    string
-}
-
 // Client wraps the official MCP Go SDK client and session.
 type Client struct {
 	sdkClient *sdkmcp.Client
@@ -143,8 +127,6 @@ type Client struct {
 
 	closeOnce sync.Once
 	closeErr  error
-
-	initialize *sdkmcp.InitializeResult
 }
 
 // NewStdioClient launches an MCP server command using the stdio transport and performs
@@ -201,7 +183,6 @@ func NewStdioClient(ctx context.Context, command string, opts ...Option) (*Clien
 		return nil, fmt.Errorf("mcp: connect failed: %w", err)
 	}
 	client.session = session
-	client.initialize = session.InitializeResult()
 
 	go client.monitorSession()
 
@@ -258,7 +239,6 @@ func NewStreamableClient(ctx context.Context, endpoint string, opts ...Option) (
 		return nil, fmt.Errorf("mcp: connect failed: %w", err)
 	}
 	client.session = session
-	client.initialize = session.InitializeResult()
 
 	go client.monitorSession()
 
@@ -319,41 +299,4 @@ func (w logWriter) Write(p []byte) (int, error) {
 		}
 	}
 	return len(p), nil
-}
-
-// InitializeResult returns the negotiated initialization metadata, if available.
-func (c *Client) InitializeResult() *InitializeResult {
-	if c.initialize == nil {
-		return nil
-	}
-	return convertInitializeResult(c.initialize)
-}
-
-func convertInitializeResult(res *sdkmcp.InitializeResult) *InitializeResult {
-	if res == nil {
-		return nil
-	}
-
-	capabilities := map[string]any{}
-	if res.Capabilities != nil {
-		if data, err := json.Marshal(res.Capabilities); err == nil {
-			_ = json.Unmarshal(data, &capabilities)
-		}
-	}
-
-	server := ServerInfo{}
-	if res.ServerInfo != nil {
-		server = ServerInfo{
-			Name:    res.ServerInfo.Name,
-			Title:   res.ServerInfo.Title,
-			Version: res.ServerInfo.Version,
-		}
-	}
-
-	return &InitializeResult{
-		ProtocolVersion: res.ProtocolVersion,
-		Capabilities:    capabilities,
-		ServerInfo:      server,
-		Instructions:    res.Instructions,
-	}
 }

@@ -43,13 +43,6 @@ func main() {
 	}
 	defer provider.Close()
 
-	if init := provider.Client().InitializeResult(); init != nil {
-		fmt.Printf("Connected to MCP server %q (protocol %s)\n", init.ServerInfo.Name, init.ProtocolVersion)
-		if init.Instructions != "" {
-			fmt.Printf("Server instructions: %s\n", init.Instructions)
-		}
-	}
-
 	fmt.Println("Fetching tool list...")
 	tools, err := provider.Tools(ctx)
 	if err != nil {
