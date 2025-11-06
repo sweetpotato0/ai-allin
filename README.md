@@ -76,25 +76,31 @@ import (
     "context"
     "log"
 
-    frameworkmcp "github.com/sweetpotato0/ai-allin/mcp"
+    "github.com/sweetpotato0/ai-allin/agent"
+    frameworkmcp "github.com/sweetpotato0/ai-allin/tool/mcp"
 )
 
 func main() {
     ctx := context.Background()
 
-    // Connect to an MCP server exposed over stdio (launched via command).
-    stdioClient, err := frameworkmcp.NewStdioClient(ctx, "my-mcp-server")
+    provider, err := frameworkmcp.NewProvider(ctx, frameworkmcp.Config{
+        Transport: frameworkmcp.TransportStreamable,
+        Endpoint:  "https://example.com/mcp",
+    })
     if err != nil {
-        log.Fatalf("connect stdio mcp: %v", err)
+        log.Fatalf("connect MCP: %v", err)
     }
-    defer stdioClient.Close()
+    defer provider.Close()
 
-    // Or connect to a remote server using the streamable HTTP (SSE) transport.
-    httpClient, err := frameworkmcp.NewStreamableClient(ctx, "https://example.com/mcp")
-    if err != nil {
-        log.Fatalf("connect streamable mcp: %v", err)
+    ag := agent.New(
+        agent.WithName("mcp-agent"),
+        agent.WithSystemPrompt("You are a helpful assistant."),
+        agent.WithToolProvider(provider),
+    )
+
+    if _, err := ag.Run(ctx, "List available MCP tools."); err != nil {
+        log.Fatalf("agent run failed: %v", err)
     }
-    defer httpClient.Close()
 }
 ```
 

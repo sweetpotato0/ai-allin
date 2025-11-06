@@ -76,25 +76,31 @@ import (
     "context"
     "log"
 
-    frameworkmcp "github.com/sweetpotato0/ai-allin/mcp"
+    "github.com/sweetpotato0/ai-allin/agent"
+    frameworkmcp "github.com/sweetpotato0/ai-allin/tool/mcp"
 )
 
 func main() {
     ctx := context.Background()
 
-    // 通过命令运行的 stdio MCP 服务器
-    stdioClient, err := frameworkmcp.NewStdioClient(ctx, "my-mcp-server")
+    provider, err := frameworkmcp.NewProvider(ctx, frameworkmcp.Config{
+        Transport: frameworkmcp.TransportStreamable,
+        Endpoint:  "https://example.com/mcp",
+    })
     if err != nil {
-        log.Fatalf("连接 stdio MCP 失败: %v", err)
+        log.Fatalf("连接 MCP 失败: %v", err)
     }
-    defer stdioClient.Close()
+    defer provider.Close()
 
-    // 通过流式 HTTP（SSE）连接远程 MCP 服务器
-    httpClient, err := frameworkmcp.NewStreamableClient(ctx, "https://example.com/mcp")
-    if err != nil {
-        log.Fatalf("连接 streamable MCP 失败: %v", err)
+    ag := agent.New(
+        agent.WithName("mcp-agent"),
+        agent.WithSystemPrompt("你是一名能够调用 MCP 工具的智能助手。"),
+        agent.WithToolProvider(provider),
+    )
+
+    if _, err := ag.Run(ctx, "列出所有 MCP 工具。"); err != nil {
+        log.Fatalf("Agent 运行失败: %v", err)
     }
-    defer httpClient.Close()
 }
 ```
 

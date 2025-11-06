@@ -21,6 +21,10 @@ type StreamLLMClient interface {
 // RunStream executes the agent with streaming output
 // It calls the callback function for each token received from the LLM
 func (a *Agent) RunStream(ctx context.Context, input string, callback StreamCallback) (string, error) {
+	if err := a.loadToolProviders(ctx); err != nil {
+		return "", err
+	}
+
 	// Check if LLM client supports streaming
 	streamProvider, ok := a.llm.(StreamLLMClient)
 	if !ok {
@@ -106,17 +110,17 @@ func (a *Agent) RunStream(ctx context.Context, input string, callback StreamCall
 
 // StreamingOptions holds configuration for streaming operations
 type StreamingOptions struct {
-	BufferSize      int           // Size of token buffer before calling callback
-	Timeout         int64         // Timeout in milliseconds for streaming
-	ErrorOnStopSeq  bool          // Whether to error on stop sequence
-	PreserveNewline bool          // Preserve newline characters in tokens
+	BufferSize      int   // Size of token buffer before calling callback
+	Timeout         int64 // Timeout in milliseconds for streaming
+	ErrorOnStopSeq  bool  // Whether to error on stop sequence
+	PreserveNewline bool  // Preserve newline characters in tokens
 }
 
 // DefaultStreamingOptions returns default streaming options
 func DefaultStreamingOptions() *StreamingOptions {
 	return &StreamingOptions{
 		BufferSize:      1,
-		Timeout:         30000,  // 30 seconds
+		Timeout:         30000, // 30 seconds
 		ErrorOnStopSeq:  false,
 		PreserveNewline: true,
 	}

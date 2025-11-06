@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"fmt"
+	"sync"
 
 	agentContext "github.com/sweetpotato0/ai-allin/context"
 	"github.com/sweetpotato0/ai-allin/memory"
@@ -29,18 +30,21 @@ type LLMClient interface {
 
 // Agent represents an AI agent
 type Agent struct {
-	name          string
-	systemPrompt  string
-	maxIterations int
-	temperature   float64
-	enableMemory  bool
-	enableTools   bool
-	llm           LLMClient
-	tools         *tool.Registry
-	memory        memory.MemoryStore
-	promptManager *prompt.Manager
-	ctx           *agentContext.Context
-	middlewares   *middleware.MiddlewareChain
+	name           string
+	systemPrompt   string
+	maxIterations  int
+	temperature    float64
+	enableMemory   bool
+	enableTools    bool
+	llm            LLMClient
+	tools          *tool.Registry
+	memory         memory.MemoryStore
+	promptManager  *prompt.Manager
+	ctx            *agentContext.Context
+	middlewares    *middleware.MiddlewareChain
+	providerMu     sync.Mutex
+	toolProviders  []tool.Provider
+	providerLoaded map[tool.Provider]bool
 }
 
 // Option is a function that configures an Agent
@@ -96,6 +100,18 @@ func WithProvider(provider LLMClient) Option {
 	}
 }
 
+// WithToolProvider registers a tool provider that will supply tools on demand.
+func WithToolProvider(provider tool.Provider) Option {
+	return func(a *Agent) {
+		if provider == nil {
+			return
+		}
+		a.providerMu.Lock()
+		defer a.providerMu.Unlock()
+		a.toolProviders = append(a.toolProviders, provider)
+	}
+}
+
 // WithMiddleware adds a middleware to the agent
 func WithMiddleware(m middleware.Middleware) Option {
 	return func(a *Agent) {
@@ -110,20 +126,70 @@ func WithMiddlewares(middlewares ...middleware.Middleware) Option {
 	}
 }
 
+func (a *Agent) loadToolProviders(ctx context.Context) error {
+	if !a.enableTools {
+		return nil
+	}
+
+	a.providerMu.Lock()
+	providers := append([]tool.Provider(nil), a.toolProviders...)
+	a.providerMu.Unlock()
+
+	for _, provider := range providers {
+		if provider == nil {
+			continue
+		}
+
+		a.providerMu.Lock()
+		if a.providerLoaded[provider] {
+			a.providerMu.Unlock()
+			continue
+		}
+		a.providerMu.Unlock()
+
+		tools, err := provider.Tools(ctx)
+		if err != nil {
+			return fmt.Errorf("load tools from provider: %w", err)
+		}
+
+		for _, t := range tools {
+			if t == nil || t.Name == "" {
+				continue
+			}
+			if _, err := a.tools.Get(t.Name); err == nil {
+				continue
+			}
+			if err := a.tools.Register(t); err != nil {
+				return err
+			}
+		}
+
+		a.providerMu.Lock()
+		if a.providerLoaded == nil {
+			a.providerLoaded = make(map[tool.Provider]bool)
+		}
+		a.providerLoaded[provider] = true
+		a.providerMu.Unlock()
+	}
+
+	return nil
+}
+
 // New creates a new agent with the given options
 func New(opts ...Option) *Agent {
 	// Default values
 	agent := &Agent{
-		name:          "Agent",
-		systemPrompt:  "You are a helpful AI assistant.",
-		maxIterations: 10,
-		temperature:   0.7,
-		enableMemory:  false,
-		enableTools:   true,
-		tools:         tool.NewRegistry(),
-		promptManager: prompt.NewManager(),
-		ctx:           agentContext.New(),
-		middlewares:   middleware.NewChain(),
+		name:           "Agent",
+		systemPrompt:   "You are a helpful AI assistant.",
+		maxIterations:  10,
+		temperature:    0.7,
+		enableMemory:   false,
+		enableTools:    true,
+		tools:          tool.NewRegistry(),
+		promptManager:  prompt.NewManager(),
+		ctx:            agentContext.New(),
+		middlewares:    middleware.NewChain(),
+		providerLoaded: make(map[tool.Provider]bool),
 	}
 
 	// Apply options
@@ -190,6 +256,10 @@ func (a *Agent) ClearMessages() {
 
 // Run executes the agent with the given input
 func (a *Agent) Run(ctx context.Context, input string) (string, error) {
+	if err := a.loadToolProviders(ctx); err != nil {
+		return "", err
+	}
+
 	// Create middleware context
 	mwCtx := middleware.NewContext(ctx)
 	mwCtx.Input = input
@@ -321,6 +391,16 @@ func (a *Agent) Clone() *Agent {
 	// Clone middleware chain
 	if a.middlewares != nil {
 		cloned.middlewares = middleware.NewChain(a.middlewares.List()...)
+	}
+
+	if len(a.toolProviders) > 0 {
+		cloned.toolProviders = append(cloned.toolProviders, a.toolProviders...)
+		if len(a.providerLoaded) > 0 {
+			cloned.providerLoaded = make(map[tool.Provider]bool, len(a.providerLoaded))
+			for provider, loaded := range a.providerLoaded {
+				cloned.providerLoaded[provider] = loaded
+			}
+		}
 	}
 
 	return cloned

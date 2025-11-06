@@ -2,14 +2,13 @@ package main
 
 import (
 	"context"
-	"errors"
 	"flag"
 	"fmt"
 	"log"
 	"strings"
 
 	"github.com/sweetpotato0/ai-allin/agent"
-	frameworkmcp "github.com/sweetpotato0/ai-allin/mcp"
+	frameworkmcp "github.com/sweetpotato0/ai-allin/tool/mcp"
 )
 
 func main() {
@@ -23,13 +22,28 @@ func main() {
 
 	ctx := context.Background()
 
-	client, err := connect(ctx, strings.ToLower(*transport), *endpoint, *command)
+	cfg := frameworkmcp.Config{
+		Endpoint: *endpoint,
+		Command:  *command,
+	}
+
+	switch strings.ToLower(*transport) {
+	case "stream", "streamable", "http":
+		cfg.Transport = frameworkmcp.TransportStreamable
+	case "stdio", "command":
+		cfg.Transport = frameworkmcp.TransportCommand
+	default:
+		log.Fatalf("unsupported transport: %s", *transport)
+	}
+
+	provider, err := frameworkmcp.NewProvider(ctx, cfg)
+
 	if err != nil {
 		log.Fatalf("connect MCP: %v", err)
 	}
-	defer client.Close()
+	defer provider.Close()
 
-	if init := client.InitializeResult(); init != nil {
+	if init := provider.Client().InitializeResult(); init != nil {
 		fmt.Printf("Connected to MCP server %q (protocol %s)\n", init.ServerInfo.Name, init.ProtocolVersion)
 		if init.Instructions != "" {
 			fmt.Printf("Server instructions: %s\n", init.Instructions)
@@ -37,7 +51,7 @@ func main() {
 	}
 
 	fmt.Println("Fetching tool list...")
-	tools, err := client.ListAllTools(ctx)
+	tools, err := provider.Tools(ctx)
 	if err != nil {
 		log.Fatalf("list tools: %v", err)
 	}
@@ -51,11 +65,8 @@ func main() {
 	ag := agent.New(
 		agent.WithName("mcp-agent"),
 		agent.WithSystemPrompt("You are a helpful assistant that can call MCP tools when needed."),
+		agent.WithToolProvider(provider),
 	)
-
-	if err := client.AttachAgent(ctx, ag); err != nil {
-		log.Fatalf("attach tools to agent: %v", err)
-	}
 
 	fmt.Println()
 	fmt.Printf("Running agent with prompt: %q\n", *prompt)
@@ -66,15 +77,4 @@ func main() {
 
 	fmt.Println("Agent response:")
 	fmt.Println(response)
-}
-
-func connect(ctx context.Context, transport, endpoint, command string) (*frameworkmcp.Client, error) {
-	switch transport {
-	case "stream", "streamable", "http":
-		return frameworkmcp.NewStreamableClient(ctx, endpoint)
-	case "stdio", "command":
-		return frameworkmcp.NewStdioClient(ctx, command)
-	default:
-		return nil, errors.New("unsupported transport: " + transport)
-	}
 }

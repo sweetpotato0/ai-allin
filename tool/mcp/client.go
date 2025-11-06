@@ -182,7 +182,7 @@ func NewStdioClient(ctx context.Context, command string, opts ...Option) (*Clien
 			}
 		},
 		LoggingMessageHandler: func(_ context.Context, req *sdkmcp.LoggingMessageRequest) {
-			if client.logger != nil && req != nil && req.Params != nil {
+			if req != nil && req.Params != nil {
 				client.logger.Printf("mcp server log [%s]: %v", req.Params.Level, req.Params.Data)
 			}
 		},
@@ -234,7 +234,7 @@ func NewStreamableClient(ctx context.Context, endpoint string, opts ...Option) (
 			}
 		},
 		LoggingMessageHandler: func(_ context.Context, req *sdkmcp.LoggingMessageRequest) {
-			if client.logger != nil && req != nil && req.Params != nil {
+			if req != nil && req.Params != nil {
 				client.logger.Printf("mcp server log [%s]: %v", req.Params.Level, req.Params.Data)
 			}
 		},
@@ -292,9 +292,7 @@ func (c *Client) monitorSession() {
 		return
 	}
 	if err := c.session.Wait(); err != nil && !errors.Is(err, sdkmcp.ErrConnectionClosed) {
-		if c.logger != nil && err != nil {
-			c.logger.Printf("mcp: session ended with error: %v", err)
-		}
+		c.logger.Printf("mcp: session ended with error: %v", err)
 	}
 	_ = c.Close()
 }
