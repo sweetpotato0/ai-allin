@@ -343,7 +343,7 @@ toolReg := tool.NewRegistry()
 toolReg.RegisterTool("query_order", tool.NewTool(
     "query_order",
     "查询订单信息",
-    func(ctx context.Context, args map[string]interface{}) (interface{}, error) {
+    func(ctx context.Context, args map[string]any) (any, error) {
         orderID := args["order_id"].(string)
         // 业务逻辑...
         return result, nil

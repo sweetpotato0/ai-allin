@@ -121,7 +121,7 @@ import (
 
 func main() {
     ctx := context.Background()
-    
+
     // Create LLM provider
     llm := openai.New(&openai.Config{
         APIKey: "your-api-key",
@@ -154,10 +154,10 @@ func main() {
     // Run with different agents in shared session
     agent1 := agent.New(agent.WithProvider(llm), agent.WithName("researcher"))
     agent2 := agent.New(agent.WithProvider(llm), agent.WithName("solver"))
-    
+
     resp1, _ := sharedSess.RunWithAgent(ctx, agent1, "Collect information")
     resp2, _ := sharedSess.RunWithAgent(ctx, agent2, "Provide solution based on information")
-    
+
     fmt.Println(resp1, resp2)
 }
 ```

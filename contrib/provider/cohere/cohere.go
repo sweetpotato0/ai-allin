@@ -61,17 +61,17 @@ type cohereMessage struct {
 
 // cohereRequest represents a Cohere API request
 type cohereRequest struct {
-	Model         string           `json:"model"`
-	Messages      []cohereMessage  `json:"messages"`
-	MaxTokens     int              `json:"max_tokens,omitempty"`
-	Temperature   float64          `json:"temperature,omitempty"`
+	Model          string          `json:"model"`
+	Messages       []cohereMessage `json:"messages"`
+	MaxTokens      int             `json:"max_tokens,omitempty"`
+	Temperature    float64         `json:"temperature,omitempty"`
 	ConversationID string          `json:"conversation_id,omitempty"`
 }
 
 // cohereResponse represents a Cohere API response
 type cohereResponse struct {
-	Text           string `json:"text"`
-	ConversationID string `json:"conversation_id"`
+	Text           string       `json:"text"`
+	ConversationID string       `json:"conversation_id"`
 	Error          *cohereError `json:"error,omitempty"`
 }
 
@@ -81,7 +81,7 @@ type cohereError struct {
 }
 
 // Generate implements agent.LLMClient interface
-func (p *Provider) Generate(ctx context.Context, messages []*message.Message, tools []map[string]interface{}) (*message.Message, error) {
+func (p *Provider) Generate(ctx context.Context, messages []*message.Message, tools []map[string]any) (*message.Message, error) {
 	if p.config.APIKey == "" {
 		return nil, fmt.Errorf("Cohere API key not configured")
 	}

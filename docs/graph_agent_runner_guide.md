@@ -144,7 +144,7 @@ state := graph.Execute(ctx, initialState)
 ### State 的重要性
 ```go
 // State在节点间传递上下文数据
-type State map[string]interface{}
+type State map[string]any
 
 // 节点可以访问和修改State
 Execute: func(ctx context.Context, state State) (State, error) {
@@ -522,7 +522,7 @@ for each round {
 }
 
 // ❌ 错误2: State在节点间传递大量消息（State是临时的）
-state["all_messages"] = []interface{}{msg1, msg2, ...}  // ❌ 容易丢失
+state["all_messages"] = []any{msg1, msg2, ...}  // ❌ 容易丢失
 
 // ❌ 错误3: Graph用于存储永久消息历史
 // Graph.State只用于临时传递，不应存储永久数据

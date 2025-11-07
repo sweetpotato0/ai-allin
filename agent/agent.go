@@ -16,7 +16,7 @@ import (
 // LLMClient defines the interface for LLM providers
 type LLMClient interface {
 	// Generate generates a response from the LLM
-	Generate(ctx context.Context, messages []*message.Message, tools []map[string]interface{}) (*message.Message, error)
+	Generate(ctx context.Context, messages []*message.Message, tools []map[string]any) (*message.Message, error)
 
 	// SetTemperature updates the temperature setting for generation
 	SetTemperature(temp float64)
@@ -352,7 +352,7 @@ func (a *Agent) Run(ctx context.Context, input string) (string, error) {
 		// Execution loop with tool calls
 		for i := 0; i < a.maxIterations; i++ {
 			// Get tool schemas if enabled
-			var toolSchemas []map[string]interface{}
+			var toolSchemas []map[string]any
 			if a.enableTools {
 				toolSchemas = a.tools.ToJSONSchemas()
 			}
@@ -375,7 +375,7 @@ func (a *Agent) Run(ctx context.Context, input string) (string, error) {
 					mem := &memory.Memory{
 						ID:       memory.GenerateMemoryID(),
 						Content:  conversationContent,
-						Metadata: map[string]interface{}{"input": input, "response": response.Content},
+						Metadata: map[string]any{"input": input, "response": response.Content},
 					}
 					a.memory.AddMemory(mwCtx.Context(), mem)
 				}

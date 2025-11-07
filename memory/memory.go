@@ -9,11 +9,11 @@ import (
 
 // Memory represents a stored memory/conversation entry
 type Memory struct {
-	ID        string                 `json:"id"`
-	Content   string                 `json:"content"`
-	Metadata  map[string]interface{} `json:"metadata"`
-	CreatedAt time.Time              `json:"created_at"`
-	UpdatedAt time.Time              `json:"updated_at"`
+	ID        string         `json:"id"`
+	Content   string         `json:"content"`
+	Metadata  map[string]any `json:"metadata"`
+	CreatedAt time.Time      `json:"created_at"`
+	UpdatedAt time.Time      `json:"updated_at"`
 }
 
 // idGenerator provides efficient ID generation with minimal syscall overhead

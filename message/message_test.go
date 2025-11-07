@@ -26,7 +26,7 @@ func TestNewMessage(t *testing.T) {
 
 func TestNewToolCallMessage(t *testing.T) {
 	toolCalls := []ToolCall{
-		{ID: "call1", Name: "tool1", Args: map[string]interface{}{"arg1": "value1"}},
+		{ID: "call1", Name: "tool1", Args: map[string]any{"arg1": "value1"}},
 	}
 
 	msg := NewToolCallMessage(toolCalls)

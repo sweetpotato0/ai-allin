@@ -18,7 +18,7 @@ func NewMockLLMProvider() *MockLLMProvider {
 	return &MockLLMProvider{}
 }
 
-func (m *MockLLMProvider) Generate(ctx context.Context, messages []*message.Message, tools []map[string]interface{}) (*message.Message, error) {
+func (m *MockLLMProvider) Generate(ctx context.Context, messages []*message.Message, tools []map[string]any) (*message.Message, error) {
 	// 返回一个简单的模拟响应
 	response := "感谢您的咨询！我已经查看了您的信息。根据您的问题，我会为您提供最佳解决方案。"
 	return message.NewMessage(message.RoleAssistant, response), nil

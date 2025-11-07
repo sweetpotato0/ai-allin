@@ -20,10 +20,7 @@ func TestAddNode(t *testing.T) {
 		Type: NodeTypeCustom,
 	}
 
-	err := g.AddNode(node)
-	if err != nil {
-		t.Errorf("Failed to add node: %v", err)
-	}
+	g.AddNode(node)
 
 	// Verify node was added
 	retrieved, err := g.GetNode("test_node")
@@ -44,10 +41,17 @@ func TestAddNodeEmptyName(t *testing.T) {
 		Type: NodeTypeCustom,
 	}
 
-	err := g.AddNode(node)
-	if err == nil {
-		t.Errorf("Expected error when adding node with empty name")
-	}
+	defer func() {
+		if r := recover(); r == nil {
+			t.Errorf("Expected function to panic, but it did not")
+		} else {
+			if r != "node name cannot be empty" {
+				t.Errorf("Expected panic value to be 'node name cannot be empty', but got %v", r)
+			}
+		}
+	}()
+
+	g.AddNode(node)
 }
 
 func TestAddNodeDuplicate(t *testing.T) {
@@ -57,11 +61,17 @@ func TestAddNodeDuplicate(t *testing.T) {
 	node2 := &Node{Name: "dup_node", Type: NodeTypeCustom}
 
 	g.AddNode(node1)
-	err := g.AddNode(node2)
 
-	if err == nil {
-		t.Errorf("Expected error when adding duplicate node")
-	}
+	defer func() {
+		if r := recover(); r == nil {
+			t.Errorf("Expected function to panic, but it did not")
+		} else {
+			if r != "node dup_node already exists" {
+				t.Errorf("Expected panic value to be 'node dup_node already exists', but got %v", r)
+			}
+		}
+	}()
+	g.AddNode(node2)
 }
 
 func TestAutoSetStartNode(t *testing.T) {
@@ -100,10 +110,7 @@ func TestSetStartNode(t *testing.T) {
 	node := &Node{Name: "start_node", Type: NodeTypeCustom}
 	g.AddNode(node)
 
-	err := g.SetStartNode("start_node")
-	if err != nil {
-		t.Errorf("Failed to set start node: %v", err)
-	}
+	g.SetStartNode("start_node")
 
 	if g.startNode != "start_node" {
 		t.Errorf("Start node not set correctly")
@@ -113,10 +120,17 @@ func TestSetStartNode(t *testing.T) {
 func TestSetStartNodeNotFound(t *testing.T) {
 	g := NewGraph()
 
-	err := g.SetStartNode("nonexistent")
-	if err == nil {
-		t.Errorf("Expected error when setting non-existent start node")
-	}
+	defer func() {
+		if r := recover(); r == nil {
+			t.Errorf("Expected function to panic, but it did not")
+		} else {
+			if r != "node nonexistent not found" {
+				t.Errorf("Expected panic value to be 'node nonexistent not found', but got %v", r)
+			}
+		}
+	}()
+
+	g.SetStartNode("nonexistent")
 }
 
 func TestSetEndNode(t *testing.T) {
@@ -125,10 +139,7 @@ func TestSetEndNode(t *testing.T) {
 	node := &Node{Name: "end_node", Type: NodeTypeCustom}
 	g.AddNode(node)
 
-	err := g.SetEndNode("end_node")
-	if err != nil {
-		t.Errorf("Failed to set end node: %v", err)
-	}
+	g.SetEndNode("end_node")
 
 	if g.endNode != "end_node" {
 		t.Errorf("End node not set correctly")

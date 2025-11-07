@@ -9,24 +9,24 @@ import (
 
 // Parameter defines a tool parameter
 type Parameter struct {
-	Name        string      `json:"name"`
-	Type        string      `json:"type"` // string, number, boolean, object, array
-	Description string      `json:"description"`
-	Required    bool        `json:"required"`
-	Enum        []string    `json:"enum,omitempty"`
-	Default     interface{} `json:"default,omitempty"`
+	Name        string   `json:"name"`
+	Type        string   `json:"type"` // string, number, boolean, object, array
+	Description string   `json:"description"`
+	Required    bool     `json:"required"`
+	Enum        []string `json:"enum,omitempty"`
+	Default     any      `json:"default,omitempty"`
 }
 
 // Tool represents a callable tool/function
 type Tool struct {
-	Name        string                                                        `json:"name"`
-	Description string                                                        `json:"description"`
-	Parameters  []Parameter                                                   `json:"parameters"`
-	Handler     func(context.Context, map[string]interface{}) (string, error) `json:"-"`
+	Name        string                                                `json:"name"`
+	Description string                                                `json:"description"`
+	Parameters  []Parameter                                           `json:"parameters"`
+	Handler     func(context.Context, map[string]any) (string, error) `json:"-"`
 }
 
 // Execute runs the tool with given arguments
-func (t *Tool) Execute(ctx context.Context, args map[string]interface{}) (string, error) {
+func (t *Tool) Execute(ctx context.Context, args map[string]any) (string, error) {
 	if t.Handler == nil {
 		return "", fmt.Errorf("tool %s has no handler", t.Name)
 	}
@@ -40,7 +40,7 @@ func (t *Tool) Execute(ctx context.Context, args map[string]interface{}) (string
 }
 
 // ValidateArgs validates the provided arguments against the tool's parameters
-func (t *Tool) ValidateArgs(args map[string]interface{}) error {
+func (t *Tool) ValidateArgs(args map[string]any) error {
 	for _, param := range t.Parameters {
 		if param.Required {
 			if _, ok := args[param.Name]; !ok {
@@ -52,12 +52,12 @@ func (t *Tool) ValidateArgs(args map[string]interface{}) error {
 }
 
 // ToJSONSchema returns the tool definition in JSON schema format for LLM
-func (t *Tool) ToJSONSchema() map[string]interface{} {
-	properties := make(map[string]interface{})
+func (t *Tool) ToJSONSchema() map[string]any {
+	properties := make(map[string]any)
 	required := make([]string, 0)
 
 	for _, param := range t.Parameters {
-		prop := map[string]interface{}{
+		prop := map[string]any{
 			"type":        param.Type,
 			"description": param.Description,
 		}
@@ -74,12 +74,12 @@ func (t *Tool) ToJSONSchema() map[string]interface{} {
 		}
 	}
 
-	return map[string]interface{}{
+	return map[string]any{
 		"type": "function",
-		"function": map[string]interface{}{
+		"function": map[string]any{
 			"name":        t.Name,
 			"description": t.Description,
-			"parameters": map[string]interface{}{
+			"parameters": map[string]any{
 				"type":       "object",
 				"properties": properties,
 				"required":   required,
@@ -158,11 +158,11 @@ func (r *Registry) List() []*Tool {
 }
 
 // ToJSONSchemas returns all tools in JSON schema format
-func (r *Registry) ToJSONSchemas() []map[string]interface{} {
+func (r *Registry) ToJSONSchemas() []map[string]any {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
-	schemas := make([]map[string]interface{}, 0, len(r.tools))
+	schemas := make([]map[string]any, 0, len(r.tools))
 	for _, tool := range r.tools {
 		schemas = append(schemas, tool.ToJSONSchema())
 	}
@@ -170,7 +170,7 @@ func (r *Registry) ToJSONSchemas() []map[string]interface{} {
 }
 
 // Execute runs a tool by name with given arguments
-func (r *Registry) Execute(ctx context.Context, name string, args map[string]interface{}) (string, error) {
+func (r *Registry) Execute(ctx context.Context, name string, args map[string]any) (string, error) {
 	tool, err := r.Get(name)
 	if err != nil {
 		return "", err

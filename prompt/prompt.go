@@ -28,7 +28,7 @@ func NewTemplate(name, content string) (*Template, error) {
 }
 
 // Render renders the template with given variables
-func (t *Template) Render(vars map[string]interface{}) (string, error) {
+func (t *Template) Render(vars map[string]any) (string, error) {
 	var buf strings.Builder
 	if err := t.template.Execute(&buf, vars); err != nil {
 		return "", fmt.Errorf("failed to render template: %w", err)
@@ -88,7 +88,7 @@ func (m *Manager) Get(name string) (*Template, error) {
 }
 
 // Render renders a template by name with given variables
-func (m *Manager) Render(name string, vars map[string]interface{}) (string, error) {
+func (m *Manager) Render(name string, vars map[string]any) (string, error) {
 	tmpl, err := m.Get(name)
 	if err != nil {
 		return "", err
@@ -127,7 +127,7 @@ func (b *Builder) Add(part string) *Builder {
 }
 
 // AddFormat adds a formatted part to the prompt
-func (b *Builder) AddFormat(format string, args ...interface{}) *Builder {
+func (b *Builder) AddFormat(format string, args ...any) *Builder {
 	b.parts = append(b.parts, fmt.Sprintf(format, args...))
 	return b
 }
@@ -154,4 +154,3 @@ func (b *Builder) Reset() *Builder {
 	b.parts = make([]string, 0)
 	return b
 }
-

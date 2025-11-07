@@ -26,7 +26,7 @@ func NewMockLLMClient() *MockLLMClient {
 	}
 }
 
-func (m *MockLLMClient) Generate(ctx context.Context, messages []*message.Message, tools []map[string]interface{}) (*message.Message, error) {
+func (m *MockLLMClient) Generate(ctx context.Context, messages []*message.Message, tools []map[string]any) (*message.Message, error) {
 	return message.NewMessage(message.RoleAssistant, m.response), nil
 }
 

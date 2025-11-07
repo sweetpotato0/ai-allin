@@ -18,7 +18,7 @@ const (
 )
 
 // State represents the execution state passed between nodes
-type State map[string]interface{}
+type State map[string]any
 
 // NodeFunc is the function executed by a node
 type NodeFunc func(context.Context, State) (State, error)
@@ -41,23 +41,42 @@ type Graph struct {
 	nodes     map[string]*Node
 	startNode string
 	endNode   string
+	maxVisits int
 }
 
 // NewGraph creates a new graph
 func NewGraph() *Graph {
 	return &Graph{
-		nodes: make(map[string]*Node),
+		nodes:     make(map[string]*Node),
+		maxVisits: 10,
+	}
+}
+
+func (g *Graph) validateNode(node *Node) {
+	// 校验 node 字段
+	switch node.Type {
+	case NodeTypeCondition:
+		if node.Condition == nil {
+			panic(fmt.Sprintf("condition node %s must have non-nil Condition function", node.Name))
+		}
+	default:
+		if node.Execute == nil {
+			panic(fmt.Sprintf("node %s of type %s must have non-nil Execute function", node.Name, node.Type))
+		}
 	}
 }
 
 // AddNode adds a node to the graph
-func (g *Graph) AddNode(node *Node) error {
+func (g *Graph) AddNode(node *Node) {
 	if node.Name == "" {
-		return fmt.Errorf("node name cannot be empty")
+		panic("node name cannot be empty")
 	}
 	if _, exists := g.nodes[node.Name]; exists {
-		return fmt.Errorf("node %s already exists", node.Name)
+		panic(fmt.Sprintf("node %s already exists", node.Name))
 	}
+
+	g.validateNode(node)
+
 	g.nodes[node.Name] = node
 
 	// Auto-set start and end nodes
@@ -68,25 +87,22 @@ func (g *Graph) AddNode(node *Node) error {
 		g.endNode = node.Name
 	}
 
-	return nil
 }
 
 // SetStartNode sets the start node
-func (g *Graph) SetStartNode(name string) error {
+func (g *Graph) SetStartNode(name string) {
 	if _, exists := g.nodes[name]; !exists {
-		return fmt.Errorf("node %s not found", name)
+		panic(fmt.Sprintf("node %s not found", name))
 	}
 	g.startNode = name
-	return nil
 }
 
 // SetEndNode sets the end node
-func (g *Graph) SetEndNode(name string) error {
+func (g *Graph) SetEndNode(name string) {
 	if _, exists := g.nodes[name]; !exists {
-		return fmt.Errorf("node %s not found", name)
+		panic(fmt.Sprintf("node %s not found", name))
 	}
 	g.endNode = name
-	return nil
 }
 
 // Execute runs the graph starting from the start node
@@ -102,12 +118,11 @@ func (g *Graph) Execute(ctx context.Context, initialState State) (State, error) 
 	}
 
 	visited := make(map[string]int) // Track visits to detect infinite loops
-	maxVisits := 100
 
 	for {
 		// Check for infinite loop
 		visited[currentNode]++
-		if visited[currentNode] > maxVisits {
+		if visited[currentNode] > g.maxVisits {
 			return nil, fmt.Errorf("infinite loop detected at node %s", currentNode)
 		}
 
@@ -119,27 +134,25 @@ func (g *Graph) Execute(ctx context.Context, initialState State) (State, error) 
 
 		// Check if we've reached the end
 		if node.Type == NodeTypeEnd {
-			return state, nil
+			return node.Execute(ctx, state)
 		}
 
 		// Execute node
-		var err error
-		if node.Execute != nil {
-			state, err = node.Execute(ctx, state)
-			if err != nil {
-				return nil, fmt.Errorf("error executing node %s: %w", currentNode, err)
-			}
+		state, err := node.Execute(ctx, state)
+		if err != nil {
+			return nil, fmt.Errorf("error executing node %s: %w", currentNode, err)
 		}
 
 		// Determine next node
 		var nextNode string
-		if node.Type == NodeTypeCondition && node.Condition != nil {
+		if node.Type == NodeTypeCondition {
 			// Use condition to determine next node
 			result, err := node.Condition(ctx, state)
 			if err != nil {
 				return nil, fmt.Errorf("error evaluating condition at node %s: %w", currentNode, err)
 			}
 			nextNode = node.NextMap[result]
+			// If nextNode is not set, use the default next node
 			if nextNode == "" {
 				nextNode = node.Next // Fallback to default
 			}
@@ -162,6 +175,11 @@ func (g *Graph) GetNode(name string) (*Node, error) {
 		return nil, fmt.Errorf("node %s not found", name)
 	}
 	return node, nil
+}
+
+// SetMaxVisits sets the maximum number of visits to a node
+func (g *Graph) SetMaxVisits(maxVisits int) {
+	g.maxVisits = maxVisits
 }
 
 // Builder helps build graphs fluently
@@ -214,6 +232,12 @@ func (b *Builder) SetStart(name string) *Builder {
 // SetEnd sets the end node
 func (b *Builder) SetEnd(name string) *Builder {
 	b.graph.SetEndNode(name)
+	return b
+}
+
+// SetMaxVisits sets the maximum number of visits to a node
+func (b *Builder) SetMaxVisits(maxVisits int) *Builder {
+	b.graph.SetMaxVisits(maxVisits)
 	return b
 }
 

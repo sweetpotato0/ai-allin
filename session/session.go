@@ -40,7 +40,7 @@ type Base struct {
 	State     State
 	CreatedAt time.Time
 	UpdatedAt time.Time
-	Metadata  map[string]interface{}
+	Metadata  map[string]any
 }
 
 // NewBase initializes a new base session
@@ -50,7 +50,7 @@ func NewBase(id string) Base {
 		State:     StateActive,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
-		Metadata:  make(map[string]interface{}),
+		Metadata:  make(map[string]any),
 	}
 }
 
@@ -66,16 +66,16 @@ func (b *Base) SetState(state State) {
 }
 
 // SetMetadata sets metadata for the session
-func (b *Base) SetMetadata(key string, value interface{}) {
+func (b *Base) SetMetadata(key string, value any) {
 	if b.Metadata == nil {
-		b.Metadata = make(map[string]interface{})
+		b.Metadata = make(map[string]any)
 	}
 	b.Metadata[key] = value
 	b.UpdatedAt = time.Now()
 }
 
 // GetMetadata returns metadata for the session
-func (b *Base) GetMetadata(key string) (interface{}, bool) {
+func (b *Base) GetMetadata(key string) (any, bool) {
 	if b.Metadata == nil {
 		return nil, false
 	}

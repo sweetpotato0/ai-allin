@@ -22,7 +22,7 @@ type Context struct {
 	Error error
 
 	// Metadata for passing data between middlewares
-	Metadata map[string]interface{}
+	Metadata map[string]any
 
 	// Internal state
 	context context.Context
@@ -31,7 +31,7 @@ type Context struct {
 // NewContext creates a new middleware context
 func NewContext(ctx context.Context) *Context {
 	return &Context{
-		Metadata: make(map[string]interface{}),
+		Metadata: make(map[string]any),
 		context:  ctx,
 	}
 }

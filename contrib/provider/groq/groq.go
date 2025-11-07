@@ -85,7 +85,7 @@ type groqError struct {
 }
 
 // Generate implements agent.LLMClient interface
-func (p *Provider) Generate(ctx context.Context, messages []*message.Message, tools []map[string]interface{}) (*message.Message, error) {
+func (p *Provider) Generate(ctx context.Context, messages []*message.Message, tools []map[string]any) (*message.Message, error) {
 	if p.config.APIKey == "" {
 		return nil, fmt.Errorf("Groq API key not configured")
 	}

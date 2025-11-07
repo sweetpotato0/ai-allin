@@ -18,7 +18,7 @@ import (
 // MockLLMClient for demonstration
 type MockLLMClient struct{}
 
-func (m *MockLLMClient) Generate(ctx context.Context, messages []*message.Message, tools []map[string]interface{}) (*message.Message, error) {
+func (m *MockLLMClient) Generate(ctx context.Context, messages []*message.Message, tools []map[string]any) (*message.Message, error) {
 	return message.NewMessage(message.RoleAssistant, "This is a mock response from the LLM"), nil
 }
 

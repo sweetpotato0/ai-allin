@@ -37,11 +37,11 @@ func DefaultMongoConfig() *MongoConfig {
 
 // mongoMemory is the internal representation for MongoDB
 type mongoMemory struct {
-	ID        string                 `bson:"_id"`
-	Content   string                 `bson:"content"`
-	Metadata  map[string]interface{} `bson:"metadata"`
-	CreatedAt time.Time              `bson:"created_at"`
-	UpdatedAt time.Time              `bson:"updated_at"`
+	ID        string         `bson:"_id"`
+	Content   string         `bson:"content"`
+	Metadata  map[string]any `bson:"metadata"`
+	CreatedAt time.Time      `bson:"created_at"`
+	UpdatedAt time.Time      `bson:"updated_at"`
 }
 
 // NewMongoStore creates a new MongoDB-based memory store
@@ -111,7 +111,7 @@ func (s *MongoStore) AddMemory(ctx context.Context, mem *memory.Memory) error {
 
 	// Initialize metadata if nil
 	if mem.Metadata == nil {
-		mem.Metadata = make(map[string]interface{})
+		mem.Metadata = make(map[string]any)
 	}
 
 	// Convert to MongoDB format

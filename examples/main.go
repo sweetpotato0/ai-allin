@@ -17,7 +17,7 @@ import (
 // MockLLMClient is a mock LLM client for demonstration
 type MockLLMClient struct{}
 
-func (m *MockLLMClient) Generate(ctx context.Context, messages []*message.Message, tools []map[string]interface{}) (*message.Message, error) {
+func (m *MockLLMClient) Generate(ctx context.Context, messages []*message.Message, tools []map[string]any) (*message.Message, error) {
 	// Mock response
 	return message.NewMessage(message.RoleAssistant, "This is a mock response from the LLM"), nil
 }
@@ -96,7 +96,7 @@ func agentWithToolsExample() {
 			{Name: "a", Type: "number", Description: "First number", Required: true},
 			{Name: "b", Type: "number", Description: "Second number", Required: true},
 		},
-		Handler: func(ctx context.Context, args map[string]interface{}) (string, error) {
+		Handler: func(ctx context.Context, args map[string]any) (string, error) {
 			op := args["operation"].(string)
 			a := args["a"].(float64)
 			b := args["b"].(float64)

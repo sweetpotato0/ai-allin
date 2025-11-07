@@ -114,7 +114,7 @@ func claudeStreamingExample() {
 // MockStreamingClient demonstrates fallback behavior when streaming is not supported
 type MockStreamingClient struct{}
 
-func (m *MockStreamingClient) Generate(ctx context.Context, messages interface{}, tools interface{}) (interface{}, error) {
+func (m *MockStreamingClient) Generate(ctx context.Context, messages any, tools any) (any, error) {
 	return &mockMessage{
 		Role:    "assistant",
 		Content: "This is a mock response without streaming support.",

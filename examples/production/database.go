@@ -292,15 +292,15 @@ func (ds *DatabaseService) IsConnected() bool {
 }
 
 // GetConnectionStats 获取连接统计
-func (ds *DatabaseService) GetConnectionStats() map[string]interface{} {
+func (ds *DatabaseService) GetConnectionStats() map[string]any {
 	ds.mu.RLock()
 	defer ds.mu.RUnlock()
 
-	return map[string]interface{}{
-		"connected":      ds.connected,
-		"last_health":    ds.lastHealth.Format(time.RFC3339),
-		"host":           ds.config.Host,
-		"database":       ds.config.Database,
+	return map[string]any{
+		"connected":       ds.connected,
+		"last_health":     ds.lastHealth.Format(time.RFC3339),
+		"host":            ds.config.Host,
+		"database":        ds.config.Database,
 		"max_connections": ds.config.MaxConnections,
 	}
 }
@@ -341,13 +341,13 @@ func NewCacheService(config *CacheConfig) *CacheService {
 }
 
 // Get 获取缓存值
-func (cs *CacheService) Get(ctx context.Context, key string) (interface{}, error) {
+func (cs *CacheService) Get(ctx context.Context, key string) (any, error) {
 	fmt.Printf("[Cache] GET: %s\n", key)
 	return nil, nil
 }
 
 // Set 设置缓存值
-func (cs *CacheService) Set(ctx context.Context, key string, value interface{}, ttl time.Duration) error {
+func (cs *CacheService) Set(ctx context.Context, key string, value any, ttl time.Duration) error {
 	fmt.Printf("[Cache] SET: %s (TTL: %v)\n", key, ttl)
 	return nil
 }

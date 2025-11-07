@@ -64,7 +64,7 @@ func (c *Client) ListAllTools(ctx context.Context) ([]*sdkmcp.Tool, error) {
 }
 
 // CallTool invokes a remote MCP tool and returns the textual response.
-func (c *Client) CallTool(ctx context.Context, name string, args map[string]interface{}) (string, error) {
+func (c *Client) CallTool(ctx context.Context, name string, args map[string]any) (string, error) {
 	if c.session == nil {
 		return "", ErrClientClosed
 	}
@@ -117,9 +117,9 @@ func (c *Client) BuildTools(ctx context.Context) ([]*tool.Tool, error) {
 			Parameters:  params,
 		}
 
-		toolDef.Handler = func(ctx context.Context, args map[string]interface{}) (string, error) {
+		toolDef.Handler = func(ctx context.Context, args map[string]any) (string, error) {
 			if args == nil {
-				args = make(map[string]interface{})
+				args = make(map[string]any)
 			}
 			return c.CallTool(ctx, remoteName, args)
 		}

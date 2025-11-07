@@ -881,7 +881,7 @@ func NewMockVectorStore() *MockVectorStore {
 	return &MockVectorStore{}
 }
 
-func (m *MockVectorStore) SaveEmbedding(ctx context.Context, id string, content string, embedding []float32, metadata map[string]interface{}) error {
+func (m *MockVectorStore) SaveEmbedding(ctx context.Context, id string, content string, embedding []float32, metadata map[string]any) error {
 	return nil
 }
 
@@ -889,8 +889,8 @@ func (m *MockVectorStore) DeleteEmbedding(ctx context.Context, id string) error 
 	return nil
 }
 
-func (m *MockVectorStore) SearchSimilar(ctx context.Context, query string, k int) ([]map[string]interface{}, error) {
-	return []map[string]interface{}{}, nil
+func (m *MockVectorStore) SearchSimilar(ctx context.Context, query string, k int) ([]map[string]any, error) {
+	return []map[string]any{}, nil
 }
 
 // MockMemoryStore 模拟内存存储实现（用于测试）

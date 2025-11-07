@@ -30,12 +30,12 @@ type RedisConfig struct {
 
 // SessionData represents serializable session data
 type SessionData struct {
-	ID        string                 `json:"id"`
-	State     session.State          `json:"state"`
-	Messages  []*message.Message     `json:"messages"`
-	CreatedAt time.Time              `json:"created_at"`
-	UpdatedAt time.Time              `json:"updated_at"`
-	Metadata  map[string]interface{} `json:"metadata"`
+	ID        string             `json:"id"`
+	State     session.State      `json:"state"`
+	Messages  []*message.Message `json:"messages"`
+	CreatedAt time.Time          `json:"created_at"`
+	UpdatedAt time.Time          `json:"updated_at"`
+	Metadata  map[string]any     `json:"metadata"`
 }
 
 // NewRedisStore creates a new Redis-based session store
@@ -99,7 +99,7 @@ func (m *RedisManager) Create(ctx context.Context, id string, ag *agent.Agent) (
 		Messages:  ag.GetMessages(),
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
-		Metadata:  make(map[string]interface{}),
+		Metadata:  make(map[string]any),
 	}
 
 	// Serialize and store
@@ -109,10 +109,10 @@ func (m *RedisManager) Create(ctx context.Context, id string, ag *agent.Agent) (
 
 	// Create in-memory session wrapper
 	return &redisSession{
-		id:     id,
-		agent:  ag,
-		store:  m.store,
-		ctx:    ctx,
+		id:    id,
+		agent: ag,
+		store: m.store,
+		ctx:   ctx,
 	}, nil
 }
 
@@ -136,10 +136,10 @@ func (m *RedisManager) Get(ctx context.Context, id string, agentID string) (sess
 	}
 
 	return &redisSession{
-		id:     id,
-		agent:  ag,
-		store:  m.store,
-		ctx:    ctx,
+		id:    id,
+		agent: ag,
+		store: m.store,
+		ctx:   ctx,
 	}, nil
 }
 

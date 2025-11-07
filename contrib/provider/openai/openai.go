@@ -51,7 +51,7 @@ func New(config *Config) *Provider {
 }
 
 // Generate implements agent.LLMClient interface
-func (p *Provider) Generate(ctx context.Context, messages []*message.Message, tools []map[string]interface{}) (*message.Message, error) {
+func (p *Provider) Generate(ctx context.Context, messages []*message.Message, tools []map[string]any) (*message.Message, error) {
 	// Convert messages to OpenAI format
 	openAIMessages := make([]openai.ChatCompletionMessageParamUnion, 0, len(messages))
 	for _, msg := range messages {
@@ -121,7 +121,7 @@ func (p *Provider) Generate(ctx context.Context, messages []*message.Message, to
 	if len(choice.Message.ToolCalls) > 0 {
 		toolCalls := make([]message.ToolCall, len(choice.Message.ToolCalls))
 		for i, tc := range choice.Message.ToolCalls {
-			var args map[string]interface{}
+			var args map[string]any
 			if err := json.Unmarshal([]byte(tc.Function.Arguments), &args); err != nil {
 				return nil, fmt.Errorf("failed to parse tool arguments: %w", err)
 			}
@@ -154,7 +154,7 @@ func (p *Provider) SetModel(model string) {
 }
 
 // GenerateStream implements agent.StreamLLMClient interface for streaming responses
-func (p *Provider) GenerateStream(ctx context.Context, messages []*message.Message, tools []map[string]interface{}, callback agent.StreamCallback) (*message.Message, error) {
+func (p *Provider) GenerateStream(ctx context.Context, messages []*message.Message, tools []map[string]any, callback agent.StreamCallback) (*message.Message, error) {
 	// Convert messages to OpenAI format
 	openAIMessages := make([]openai.ChatCompletionMessageParamUnion, 0, len(messages))
 	for _, msg := range messages {
@@ -247,7 +247,7 @@ func (p *Provider) GenerateStream(ctx context.Context, messages []*message.Messa
 					}
 					if tc.Function.Arguments != "" {
 						// Parse arguments
-						var args map[string]interface{}
+						var args map[string]any
 						if err := json.Unmarshal([]byte(tc.Function.Arguments), &args); err == nil {
 							accumulatedToolCalls[idx].Args = args
 						}

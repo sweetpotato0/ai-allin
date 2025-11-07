@@ -9,7 +9,7 @@ func TestMemory(t *testing.T) {
 	mem := &Memory{
 		ID:      "test-id",
 		Content: "test content",
-		Metadata: map[string]interface{}{
+		Metadata: map[string]any{
 			"key": "value",
 		},
 		CreatedAt: time.Now(),

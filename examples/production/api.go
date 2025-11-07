@@ -31,13 +31,13 @@ type (
 
 	// CustomerInquiryResponse 客户咨询响应
 	CustomerInquiryResponse struct {
-		SessionID string                 `json:"session_id"`
-		Response  string                 `json:"response"`
-		TicketID  string                 `json:"ticket_id"`
-		Messages  int                    `json:"messages_count"`
-		Duration  float64                `json:"duration_ms"`
-		Success   bool                   `json:"success"`
-		Error     string                 `json:"error,omitempty"`
+		SessionID string  `json:"session_id"`
+		Response  string  `json:"response"`
+		TicketID  string  `json:"ticket_id"`
+		Messages  int     `json:"messages_count"`
+		Duration  float64 `json:"duration_ms"`
+		Success   bool    `json:"success"`
+		Error     string  `json:"error,omitempty"`
 	}
 
 	// SessionInfoRequest 会话信息请求
@@ -56,21 +56,21 @@ type (
 
 	// HealthCheckResponse 健康检查响应
 	HealthCheckResponse struct {
-		Status             string                 `json:"status"`
-		Timestamp          string                 `json:"timestamp"`
-		ActiveSessions     int                    `json:"active_sessions"`
-		Metrics            map[string]interface{} `json:"metrics"`
-		DatabaseConnected  bool                   `json:"database_connected"`
-		RedisConnected     bool                   `json:"redis_connected"`
-		CacheHitRate       float64                `json:"cache_hit_rate"`
+		Status            string         `json:"status"`
+		Timestamp         string         `json:"timestamp"`
+		ActiveSessions    int            `json:"active_sessions"`
+		Metrics           map[string]any `json:"metrics"`
+		DatabaseConnected bool           `json:"database_connected"`
+		RedisConnected    bool           `json:"redis_connected"`
+		CacheHitRate      float64        `json:"cache_hit_rate"`
 	}
 
 	// ErrorResponse 错误响应
 	ErrorResponse struct {
-		Error     string `json:"error"`
-		Message   string `json:"message"`
-		StatusCode int   `json:"status_code"`
-		Timestamp string `json:"timestamp"`
+		Error      string `json:"error"`
+		Message    string `json:"message"`
+		StatusCode int    `json:"status_code"`
+		Timestamp  string `json:"timestamp"`
 	}
 )
 
@@ -193,7 +193,7 @@ func (s *APIServer) listSessions(w http.ResponseWriter, r *http.Request) {
 	}
 
 	sessionIDs := s.platform.sessionManager.List()
-	s.writeJSON(w, http.StatusOK, map[string]interface{}{
+	s.writeJSON(w, http.StatusOK, map[string]any{
 		"sessions": sessionIDs,
 		"count":    len(sessionIDs),
 	})
@@ -209,7 +209,7 @@ func (s *APIServer) getMetrics(w http.ResponseWriter, r *http.Request) {
 	s.platform.metrics.mu.RLock()
 	defer s.platform.metrics.mu.RUnlock()
 
-	metrics := map[string]interface{}{
+	metrics := map[string]any{
 		"total_requests":       s.platform.metrics.TotalRequests,
 		"successful_requests":  s.platform.metrics.SuccessfulRequests,
 		"failed_requests":      s.platform.metrics.FailedRequests,
@@ -239,7 +239,7 @@ func (s *APIServer) healthCheck(w http.ResponseWriter, r *http.Request) {
 		DatabaseConnected: true, // 实际应该检查真实数据库
 		RedisConnected:    true, // 实际应该检查真实Redis
 		CacheHitRate:      0.95,
-		Metrics: map[string]interface{}{
+		Metrics: map[string]any{
 			"total_requests":      s.platform.metrics.TotalRequests,
 			"successful_requests": s.platform.metrics.SuccessfulRequests,
 			"failed_requests":     s.platform.metrics.FailedRequests,
@@ -265,9 +265,9 @@ func (s *APIServer) getCustomers(w http.ResponseWriter, r *http.Request) {
 	s.platform.customersMutex.RLock()
 	defer s.platform.customersMutex.RUnlock()
 
-	customers := make([]map[string]interface{}, 0)
+	customers := make([]map[string]any, 0)
 	for _, c := range s.platform.customers {
-		customers = append(customers, map[string]interface{}{
+		customers = append(customers, map[string]any{
 			"id":            c.ID,
 			"name":          c.Name,
 			"vip_level":     c.VIPLevel,
@@ -277,7 +277,7 @@ func (s *APIServer) getCustomers(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
-	s.writeJSON(w, http.StatusOK, map[string]interface{}{
+	s.writeJSON(w, http.StatusOK, map[string]any{
 		"customers": customers,
 		"count":     len(customers),
 	})
@@ -293,19 +293,19 @@ func (s *APIServer) getOrders(w http.ResponseWriter, r *http.Request) {
 	s.platform.ordersMutex.RLock()
 	defer s.platform.ordersMutex.RUnlock()
 
-	orders := make([]map[string]interface{}, 0)
+	orders := make([]map[string]any, 0)
 	for _, o := range s.platform.orders {
-		orders = append(orders, map[string]interface{}{
-			"order_id":      o.OrderID,
-			"customer_id":   o.CustomerID,
-			"total_amount":  o.TotalAmount,
-			"status":        o.Status,
-			"created_at":    o.CreatedAt,
-			"tracking_url":  o.TrackingURL,
+		orders = append(orders, map[string]any{
+			"order_id":     o.OrderID,
+			"customer_id":  o.CustomerID,
+			"total_amount": o.TotalAmount,
+			"status":       o.Status,
+			"created_at":   o.CreatedAt,
+			"tracking_url": o.TrackingURL,
 		})
 	}
 
-	s.writeJSON(w, http.StatusOK, map[string]interface{}{
+	s.writeJSON(w, http.StatusOK, map[string]any{
 		"orders": orders,
 		"count":  len(orders),
 	})
@@ -321,9 +321,9 @@ func (s *APIServer) getTickets(w http.ResponseWriter, r *http.Request) {
 	s.platform.ticketsMutex.RLock()
 	defer s.platform.ticketsMutex.RUnlock()
 
-	tickets := make([]map[string]interface{}, 0)
+	tickets := make([]map[string]any, 0)
 	for _, t := range s.platform.tickets {
-		tickets = append(tickets, map[string]interface{}{
+		tickets = append(tickets, map[string]any{
 			"ticket_id":   t.TicketID,
 			"customer_id": t.CustomerID,
 			"subject":     t.Subject,
@@ -334,7 +334,7 @@ func (s *APIServer) getTickets(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
-	s.writeJSON(w, http.StatusOK, map[string]interface{}{
+	s.writeJSON(w, http.StatusOK, map[string]any{
 		"tickets": tickets,
 		"count":   len(tickets),
 	})
@@ -345,7 +345,7 @@ func (s *APIServer) getTickets(w http.ResponseWriter, r *http.Request) {
 // ================================
 
 // writeJSON 写入JSON响应
-func (s *APIServer) writeJSON(w http.ResponseWriter, statusCode int, data interface{}) {
+func (s *APIServer) writeJSON(w http.ResponseWriter, statusCode int, data any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("X-Powered-By", "ai-allin-ecommerce")
 	w.WriteHeader(statusCode)

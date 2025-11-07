@@ -14,21 +14,21 @@ const (
 
 // Message represents a single message in a conversation
 type Message struct {
-	ID        string                 `json:"id"`
-	Role      Role                   `json:"role"`
-	Content   string                 `json:"content"`
-	ToolCalls []ToolCall             `json:"tool_calls,omitempty"`
-	ToolID    string                 `json:"tool_id,omitempty"` // For tool response messages
-	Metadata  map[string]interface{} `json:"metadata,omitempty"`
-	CreatedAt time.Time              `json:"created_at"`
+	ID        string         `json:"id"`
+	Role      Role           `json:"role"`
+	Content   string         `json:"content"`
+	ToolCalls []ToolCall     `json:"tool_calls,omitempty"`
+	ToolID    string         `json:"tool_id,omitempty"` // For tool response messages
+	Metadata  map[string]any `json:"metadata,omitempty"`
+	CreatedAt time.Time      `json:"created_at"`
 }
 
 // ToolCall represents a tool invocation request
 type ToolCall struct {
-	ID       string                 `json:"id"`
-	Name     string                 `json:"name"`
-	Args     map[string]interface{} `json:"args"`
-	Response string                 `json:"response,omitempty"` // Filled after tool execution
+	ID       string         `json:"id"`
+	Name     string         `json:"name"`
+	Args     map[string]any `json:"args"`
+	Response string         `json:"response,omitempty"` // Filled after tool execution
 }
 
 // NewMessage creates a new message with the given role and content
@@ -38,7 +38,7 @@ func NewMessage(role Role, content string) *Message {
 		Role:      role,
 		Content:   content,
 		CreatedAt: time.Now(),
-		Metadata:  make(map[string]interface{}),
+		Metadata:  make(map[string]any),
 	}
 }
 
@@ -49,7 +49,7 @@ func Clone(msg *Message) *Message {
 	}
 	cloned := *msg
 	if msg.Metadata != nil {
-		cloned.Metadata = make(map[string]interface{}, len(msg.Metadata))
+		cloned.Metadata = make(map[string]any, len(msg.Metadata))
 		for k, v := range msg.Metadata {
 			cloned.Metadata[k] = v
 		}
@@ -81,7 +81,7 @@ func cloneToolCall(call ToolCall) ToolCall {
 		Name: call.Name,
 	}
 	if call.Args != nil {
-		cloned.Args = make(map[string]interface{}, len(call.Args))
+		cloned.Args = make(map[string]any, len(call.Args))
 		for k, v := range call.Args {
 			cloned.Args[k] = v
 		}
@@ -99,7 +99,7 @@ func NewToolCallMessage(toolCalls []ToolCall) *Message {
 		Role:      RoleAssistant,
 		ToolCalls: toolCalls,
 		CreatedAt: time.Now(),
-		Metadata:  make(map[string]interface{}),
+		Metadata:  make(map[string]any),
 	}
 }
 
@@ -111,7 +111,7 @@ func NewToolResponseMessage(toolID, content string) *Message {
 		Content:   content,
 		ToolID:    toolID,
 		CreatedAt: time.Now(),
-		Metadata:  make(map[string]interface{}),
+		Metadata:  make(map[string]any),
 	}
 }
 

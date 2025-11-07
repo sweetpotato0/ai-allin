@@ -13,7 +13,7 @@ import (
 // MockLLMClient simulates an LLM
 type MockLLMClient struct{}
 
-func (m *MockLLMClient) Generate(ctx context.Context, messages []*message.Message, tools []map[string]interface{}) (*message.Message, error) {
+func (m *MockLLMClient) Generate(ctx context.Context, messages []*message.Message, tools []map[string]any) (*message.Message, error) {
 	// In a real implementation, this would call an actual LLM
 	// For demo, we'll return a message indicating the tool was called
 	return message.NewMessage(message.RoleAssistant, "I've calculated the result using the calculator tool."), nil
@@ -67,7 +67,7 @@ func main() {
 				Required:    true,
 			},
 		},
-		Handler: func(ctx context.Context, args map[string]interface{}) (string, error) {
+		Handler: func(ctx context.Context, args map[string]any) (string, error) {
 			op := args["operation"].(string)
 			a := args["a"].(float64)
 			b := args["b"].(float64)
@@ -100,7 +100,7 @@ func main() {
 	fmt.Println("Registered calculator tool with operations: add, subtract, multiply, divide")
 
 	// Test tool execution directly
-	result, err := calculatorTool.Execute(ctx, map[string]interface{}{
+	result, err := calculatorTool.Execute(ctx, map[string]any{
 		"operation": "add",
 		"a":         float64(10),
 		"b":         float64(5),
@@ -112,7 +112,7 @@ func main() {
 	fmt.Printf("Direct tool call: 10 + 5 = %s\n", result)
 
 	// Test multiplication
-	result, err = calculatorTool.Execute(ctx, map[string]interface{}{
+	result, err = calculatorTool.Execute(ctx, map[string]any{
 		"operation": "multiply",
 		"a":         float64(7),
 		"b":         float64(8),

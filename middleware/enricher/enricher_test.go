@@ -14,7 +14,7 @@ func TestContextEnricher(t *testing.T) {
 			return nil
 		})
 
-		ctx := &middleware.Context{Metadata: map[string]interface{}{}}
+		ctx := &middleware.Context{Metadata: map[string]any{}}
 		err := enricher.Execute(ctx, func(c *middleware.Context) error { return nil })
 
 		if err != nil {
@@ -30,7 +30,7 @@ func TestContextEnricher(t *testing.T) {
 			return errors.New("enrichment failed")
 		})
 
-		ctx := &middleware.Context{Metadata: map[string]interface{}{}}
+		ctx := &middleware.Context{Metadata: map[string]any{}}
 		err := enricher.Execute(ctx, func(c *middleware.Context) error { return nil })
 
 		if err == nil {
@@ -41,7 +41,7 @@ func TestContextEnricher(t *testing.T) {
 	t.Run("handles nil enricher function", func(t *testing.T) {
 		enricher := NewContextEnricher(nil)
 
-		ctx := &middleware.Context{Metadata: map[string]interface{}{}}
+		ctx := &middleware.Context{Metadata: map[string]any{}}
 		err := enricher.Execute(ctx, func(c *middleware.Context) error { return nil })
 
 		if err != nil {

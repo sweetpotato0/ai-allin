@@ -96,7 +96,7 @@ type echoProvider struct {
 	tag string
 }
 
-func (e *echoProvider) Generate(ctx context.Context, msgs []*message.Message, tools []map[string]interface{}) (*message.Message, error) {
+func (e *echoProvider) Generate(ctx context.Context, msgs []*message.Message, tools []map[string]any) (*message.Message, error) {
 	turn := len(msgs)
 	last := msgs[turn-1].Content
 	return message.NewMessage(message.RoleAssistant, fmt.Sprintf("%s sees turn %d: %s", e.tag, turn, last)), nil

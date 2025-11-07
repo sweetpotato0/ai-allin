@@ -14,12 +14,12 @@ func TestToolExecution(t *testing.T) {
 		Parameters: []Parameter{
 			{Name: "input", Type: "string", Description: "Test input", Required: true},
 		},
-		Handler: func(ctx context.Context, args map[string]interface{}) (string, error) {
+		Handler: func(ctx context.Context, args map[string]any) (string, error) {
 			return args["input"].(string) + "_processed", nil
 		},
 	}
 
-	result, err := tool.Execute(ctx, map[string]interface{}{"input": "test"})
+	result, err := tool.Execute(ctx, map[string]any{"input": "test"})
 	if err != nil {
 		t.Fatalf("Expected no error, got %v", err)
 	}
@@ -38,19 +38,19 @@ func TestToolValidation(t *testing.T) {
 		Parameters: []Parameter{
 			{Name: "required_param", Type: "string", Description: "Required parameter", Required: true},
 		},
-		Handler: func(ctx context.Context, args map[string]interface{}) (string, error) {
+		Handler: func(ctx context.Context, args map[string]any) (string, error) {
 			return "ok", nil
 		},
 	}
 
 	// Test with missing required parameter
-	_, err := tool.Execute(ctx, map[string]interface{}{})
+	_, err := tool.Execute(ctx, map[string]any{})
 	if err == nil {
 		t.Error("Expected error for missing required parameter, got nil")
 	}
 
 	// Test with required parameter
-	_, err = tool.Execute(ctx, map[string]interface{}{"required_param": "value"})
+	_, err = tool.Execute(ctx, map[string]any{"required_param": "value"})
 	if err != nil {
 		t.Errorf("Expected no error, got %v", err)
 	}

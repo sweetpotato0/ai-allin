@@ -15,7 +15,7 @@ type StreamCallback func(token string) error
 type StreamLLMClient interface {
 	LLMClient
 	// GenerateStream generates a response with token streaming
-	GenerateStream(ctx context.Context, messages []*message.Message, tools []map[string]interface{}, callback StreamCallback) (*message.Message, error)
+	GenerateStream(ctx context.Context, messages []*message.Message, tools []map[string]any, callback StreamCallback) (*message.Message, error)
 }
 
 // RunStream executes the agent with streaming output
@@ -61,7 +61,7 @@ func (a *Agent) RunStream(ctx context.Context, input string, callback StreamCall
 	// Execution loop with tool calls
 	for i := 0; i < a.maxIterations; i++ {
 		// Get tool schemas if enabled
-		var toolSchemas []map[string]interface{}
+		var toolSchemas []map[string]any
 		if a.enableTools {
 			toolSchemas = a.tools.ToJSONSchemas()
 		}
@@ -83,7 +83,7 @@ func (a *Agent) RunStream(ctx context.Context, input string, callback StreamCall
 				mem := &memory.Memory{
 					ID:       memory.GenerateMemoryID(),
 					Content:  conversationContent,
-					Metadata: map[string]interface{}{"input": input, "response": response.Content},
+					Metadata: map[string]any{"input": input, "response": response.Content},
 				}
 				a.memory.AddMemory(ctx, mem)
 			}

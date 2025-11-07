@@ -62,7 +62,7 @@ func New(config *Config) *Provider {
 }
 
 // Generate implements agent.LLMClient interface
-func (p *Provider) Generate(ctx context.Context, messages []*message.Message, tools []map[string]interface{}) (*message.Message, error) {
+func (p *Provider) Generate(ctx context.Context, messages []*message.Message, tools []map[string]any) (*message.Message, error) {
 	// Separate system messages from conversation
 	var systemPrompts []string
 	conversationMessages := make([]anthropic.MessageParam, 0)
@@ -147,7 +147,7 @@ func (p *Provider) Generate(ctx context.Context, messages []*message.Message, to
 		case "text":
 			responseText = content.Text
 		case "tool_use":
-			var args map[string]interface{}
+			var args map[string]any
 			if err := json.Unmarshal(content.Input, &args); err != nil {
 				return nil, fmt.Errorf("failed to parse tool input: %w", err)
 			}
@@ -185,7 +185,7 @@ func (p *Provider) SetModel(model string) {
 }
 
 // GenerateStream implements agent.StreamLLMClient interface for streaming responses
-func (p *Provider) GenerateStream(ctx context.Context, messages []*message.Message, tools []map[string]interface{}, callback agent.StreamCallback) (*message.Message, error) {
+func (p *Provider) GenerateStream(ctx context.Context, messages []*message.Message, tools []map[string]any, callback agent.StreamCallback) (*message.Message, error) {
 	// Separate system messages from conversation
 	var systemPrompts []string
 	conversationMessages := make([]anthropic.MessageParam, 0, len(messages))
@@ -298,7 +298,7 @@ func (p *Provider) GenerateStream(ctx context.Context, messages []*message.Messa
 	if finalMessage != nil {
 		for _, content := range finalMessage.Content {
 			if content.Type == "tool_use" {
-				var args map[string]interface{}
+				var args map[string]any
 				if err := json.Unmarshal(content.Input, &args); err == nil {
 					toolCalls = append(toolCalls, message.ToolCall{
 						ID:   content.ID,

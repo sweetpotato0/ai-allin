@@ -63,8 +63,8 @@ func NewPostgresStore(config *PostgresConfig) (*PostgresStore, error) {
 	}
 
 	// Configure connection pool for optimal performance
-	db.SetMaxOpenConns(25)        // Max concurrent connections
-	db.SetMaxIdleConns(5)         // Min idle connections for reuse
+	db.SetMaxOpenConns(25)                 // Max concurrent connections
+	db.SetMaxIdleConns(5)                  // Min idle connections for reuse
 	db.SetConnMaxLifetime(5 * time.Minute) // Recycle connections after 5 min
 
 	// Test the connection with timeout
@@ -219,7 +219,7 @@ func (s *PostgresStore) SearchMemoryWithLimit(ctx context.Context, query string,
 		}
 
 		// Unmarshal metadata JSON
-		mem.Metadata = make(map[string]interface{})
+		mem.Metadata = make(map[string]any)
 		if metadataJSON != "" && metadataJSON != "{}" {
 			err := json.Unmarshal([]byte(metadataJSON), &mem.Metadata)
 			if err != nil {
@@ -292,7 +292,7 @@ func (s *PostgresStore) GetMemoryByID(ctx context.Context, id string) (*memory.M
 	}
 
 	// Unmarshal metadata JSON
-	mem.Metadata = make(map[string]interface{})
+	mem.Metadata = make(map[string]any)
 	if metadataJSON != "" && metadataJSON != "{}" {
 		err := json.Unmarshal([]byte(metadataJSON), &mem.Metadata)
 		if err != nil {
