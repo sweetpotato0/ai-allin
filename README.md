@@ -21,6 +21,8 @@ A comprehensive, production-ready Go framework for building AI agents with strea
 - **Runtime Executor Layer**: Agent specs and executors decouple runtime behavior from stored conversations, enabling custom execution strategies and observability
 - **Tool Supervisor**: A built-in supervisor keeps tool providers synchronized and refreshes tool schemas automatically
 - **Execution Graphs**: Workflow orchestration with conditional branching
+- **Agentic RAG**: Multi-agent Retrieval-Augmented Generation pipeline with planners, researchers, writers, and critics wired through `graph.Graph`
+- **RAG Building Blocks**: Dedicated packages for documents, chunking, embedders, retrievers, and rerankers to compose custom pipelines
 - **Thread-Safe Operations**: RWMutex protected concurrent access
 - **Configuration Validation**: Environment-based configuration with validation
 
@@ -197,6 +199,68 @@ func main() {
 ```
 
 Every session exposes a serializable `session.Record` (via `session.Session.Snapshot()`), which includes the full message transcript, the last assistant message, and timing metadata for the most recent turn. Combine this with `manager.Save(ctx, session)` after each interaction to persist state into any `session/store` implementation (in-memory, Redis, Postgres, etc.).
+
+### Agentic RAG
+
+The `rag/agentic` package ships a ready-to-use, multi-agent Retrieval-Augmented Generation workflow. It sits on top of dedicated building blocks so that the entire lifecycle stays explicit:
+
+1. **Data preparation** – model sources as `rag/document.Document` and chunk them with a `rag/chunking.Chunker`.
+2. **Index construction** – feed chunks to an `rag/embedder.Embedder` (e.g., `embedder.NewVectorAdapter`) and persist vectors via the `rag/retriever` package.
+3. **Query & retrieval** – `retriever.Search` embeds questions, queries the `vector.VectorStore`, and optionally reranks using `rag/reranker`.
+4. **Generation integration** – the Agentic pipeline plans, routes, and generates the final answer using the curated evidence.
+
+A planner agent decomposes the task, a researcher agent issues searches, a writer agent uses the retrieved evidence, and an optional critic agent reviews the draft answer.
+
+```go
+package main
+
+import (
+    "context"
+    "log"
+    "os"
+
+    "github.com/sweetpotato0/ai-allin/contrib/provider/openai"
+    "github.com/sweetpotato0/ai-allin/rag/agentic"
+    vectorstore "github.com/sweetpotato0/ai-allin/vector/store"
+)
+
+func main() {
+    ctx := context.Background()
+    apiKey := os.Getenv("OPENAI_API_KEY")
+    if apiKey == "" {
+        log.Fatal("missing OPENAI_API_KEY")
+    }
+
+    llm := openai.New(openai.DefaultConfig(apiKey))
+    embedder := newKeywordEmbedder() // see examples/rag/agentic for a placeholder implementation
+    store := vectorstore.NewInMemoryVectorStore()
+
+    pipeline, err := agentic.NewPipeline(
+        agentic.Clients{Default: llm},
+        embedder,
+        store,
+        agentic.WithTopK(3),
+    )
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    _ = pipeline.IndexDocuments(ctx,
+        agentic.Document{ID: "shipping", Title: "Shipping Policy", Content: "..."},
+        agentic.Document{ID: "returns", Title: "Return Policy", Content: "..."},
+    )
+
+    resp, err := pipeline.Run(ctx, "Summarize shipping timelines and returns.")
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    log.Println("Plan steps:", len(resp.Plan.Steps))
+    log.Println("Answer:", resp.FinalAnswer)
+}
+```
+
+See `docs/rag/overview.md` for a deeper dive and `examples/rag/agentic` for a runnable demo with OpenAI plus a toy embedder.
 
 If you need to rehydrate sessions from a persistent store in a new process, register an `AgentResolver` with `session.WithAgentResolver` so the manager knows how to rebuild the underlying agent prototype for any single-agent session.
 

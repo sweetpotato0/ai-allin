@@ -137,10 +137,13 @@ func (g *Graph) Execute(ctx context.Context, initialState State) (State, error) 
 			return node.Execute(ctx, state)
 		}
 
-		// Execute node
-		state, err := node.Execute(ctx, state)
-		if err != nil {
-			return nil, fmt.Errorf("error executing node %s: %w", currentNode, err)
+		// Execute node (condition nodes may skip execution when they only rely on Condition)
+		if node.Execute != nil {
+			var err error
+			state, err = node.Execute(ctx, state)
+			if err != nil {
+				return nil, fmt.Errorf("error executing node %s: %w", currentNode, err)
+			}
 		}
 
 		// Determine next node

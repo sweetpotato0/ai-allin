@@ -21,6 +21,8 @@
 - **运行时执行层**：Agent Spec + Executor 解耦运行逻辑与会话数据，便于观测和扩展
 - **工具监督器**：内置监督器自动加载并刷新工具提供商，保持工具 schema 最新
 - **执行图**: 支持条件分支的工作流编排
+- **Agentic RAG**: 基于 `graph.Graph` 串联规划、检索、写作、审阅智能体的多智能体 RAG 流程
+- **RAG 组件化**: `rag/document`、`rag/chunking`、`rag/embedder`、`rag/retriever`、`rag/reranker` 等包让数据准备、检索、重排更易扩展
 - **线程安全**: RWMutex 保护的并发访问
 - **配置验证**: 基于环境变量的配置与验证
 
@@ -199,6 +201,68 @@ func main() {
 每个会话都可以通过 `session.Session.Snapshot()` 生成 `session.Record`，其中包含完整消息历史、最近一次回复以及执行耗时。调用 `mgr.Save(ctx, sess)` 即可把最新快照写入任意 `session/store` 实现（内存、Redis、Postgres 等），用于持久化或分析。
 
 如果需要在新的进程中恢复单 Agent 会话，可以通过 `session.WithAgentResolver` 注册一个 Agent 解析器，让 `Manager` 知道如何为对应的 `session.Record` 重建 Agent。
+
+### Agentic RAG（多智能体）
+
+`rag/agentic` 提供一套即开即用的多智能体 RAG 流程，并围绕经典的四个阶段拆分为独立组件：
+
+1. **数据准备**：使用 `rag/document.Document` 表示原始资料，配合 `rag/chunking.Chunker` 切分成片段。
+2. **索引构建**：将片段交给 `rag/embedder.Embedder` 生成向量，并使用 `rag/retriever.IndexDocuments` 写入 `vector.VectorStore`。
+3. **查询与检索**：`retriever.Search` 负责生成查询向量、向量检索，以及可选的 `rag/reranker` 重排。
+4. **生成集成**：Agentic 管线在拿到证据后调用规划 / 检索 / 写作 / 评审智能体，生成可审计的答案。
+
+规划智能体拆解任务，检索智能体把步骤翻译成向量查询，写作智能体依据证据撰写草稿，可选的评审智能体在收尾阶段校对和改写。
+
+```go
+package main
+
+import (
+    "context"
+    "log"
+    "os"
+
+    "github.com/sweetpotato0/ai-allin/contrib/provider/openai"
+    "github.com/sweetpotato0/ai-allin/rag/agentic"
+    vectorstore "github.com/sweetpotato0/ai-allin/vector/store"
+)
+
+func main() {
+    ctx := context.Background()
+    apiKey := os.Getenv("OPENAI_API_KEY")
+    if apiKey == "" {
+        log.Fatal("缺少 OPENAI_API_KEY")
+    }
+
+    llm := openai.New(openai.DefaultConfig(apiKey))
+    embedder := newKeywordEmbedder() // 示例嵌入器，生产环境请替换；参见 examples/rag/agentic
+    store := vectorstore.NewInMemoryVectorStore()
+
+    pipeline, err := agentic.NewPipeline(
+        agentic.Clients{Default: llm},
+        embedder,
+        store,
+        agentic.WithTopK(3),
+    )
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    _ = pipeline.IndexDocuments(ctx,
+        agentic.Document{ID: "shipping", Title: "Shipping Policy", Content: "..."},
+        agentic.Document{ID: "returns", Title: "Return Policy", Content: "..."},
+    )
+
+    resp, err := pipeline.Run(ctx, "总结物流时效与退货政策。")
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    log.Println("规划步骤数:", len(resp.Plan.Steps))
+    log.Println("最终回答:", resp.FinalAnswer)
+}
+```
+
+更多细节请查看 `docs/rag/overview.md`，并参考 `examples/rag/agentic` 运行端到端示例。
 
 ## 架构
 
