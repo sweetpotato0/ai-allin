@@ -51,6 +51,13 @@ func main() {
 	runWithAgent("solver", solver, "Summarize previous context and suggest next steps.")
 	runWithAgent("researcher", researcher, "Collect missing requirements based on the solver's suggestion.")
 
+	// Persist the shared session snapshot for analytics/persistence
+	if err := mgr.Save(ctx, sharedSess); err != nil {
+		log.Fatalf("Failed to save shared session: %v", err)
+	}
+	snap := sharedSess.Snapshot()
+	fmt.Printf("Shared session snapshot captured with %d messages (last turn %s)\n", len(snap.Messages), snap.LastDuration)
+
 	// Method 2: Create a new shared session for another conversation
 	fmt.Println("\n=== Method 2: Using Another Shared Session ===")
 	sharedSess2, err := mgr.CreateShared(ctx, sessionID+"-2")

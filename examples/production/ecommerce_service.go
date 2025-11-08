@@ -18,7 +18,6 @@ import (
 	"github.com/sweetpotato0/ai-allin/runner"
 	"github.com/sweetpotato0/ai-allin/session"
 	"github.com/sweetpotato0/ai-allin/session/store"
-	"github.com/sweetpotato0/ai-allin/tool"
 )
 
 // ================================
@@ -73,7 +72,6 @@ type Ticket struct {
 // KnowledgeBase 知识库
 type KnowledgeBase struct {
 	articles map[string]KBArticle
-	mu       sync.RWMutex
 }
 
 type KBArticle struct {
@@ -122,10 +120,9 @@ type PlatformMetrics struct {
 
 // AgentFactory 高级Agent工厂
 type AgentFactory struct {
-	llmProvider  agent.LLMClient
-	vectorStore  *MockVectorStore
-	memoryStore  memory.MemoryStore
-	toolRegistry *tool.Registry
+	llmProvider agent.LLMClient
+	vectorStore *MockVectorStore
+	memoryStore memory.MemoryStore
 }
 
 // ================================
@@ -480,10 +477,10 @@ func (p *ECommerceServicePlatform) HandleCustomerInquiry(
 	csAgent := p.agentFactory.CreateCustomerServiceAgent("cs_agent")
 
 	// 3. 配置Agent中间件
-	p.configureAgentMiddleware(csAgent, sessionID, customerID)
+	p.configureAgentMiddleware(csAgent)
 
 	// 4. 创建Session
-	sess, err := p.sessionManager.Create(sessionID, csAgent)
+	sess, err := p.sessionManager.Create(ctx, sessionID, csAgent)
 	if err != nil {
 		return "", fmt.Errorf("创建session失败: %w", err)
 	}
@@ -540,9 +537,9 @@ func (p *ECommerceServicePlatform) MultiTurnConversationScenario(customerID stri
 	// 创建一个长期Session（一个用户会话）
 	sessionID := fmt.Sprintf("conv_%s_%d", customerID, time.Now().UnixNano())
 	csAgent := p.agentFactory.CreateCustomerServiceAgent("cs_agent")
-	p.configureAgentMiddleware(csAgent, sessionID, customerID)
+	p.configureAgentMiddleware(csAgent)
 
-	sess, _ := p.sessionManager.Create(sessionID, csAgent)
+	sess, _ := p.sessionManager.Create(ctx, sessionID, csAgent)
 	defer sess.Close()
 
 	// 模拟多轮对话
@@ -607,9 +604,9 @@ func (p *ECommerceServicePlatform) MultiAgentOrchestration(customerID string) er
 
 	csSessionID := fmt.Sprintf("cs_%s_%d", customerID, time.Now().UnixNano())
 	csAgent := p.agentFactory.CreateCustomerServiceAgent("cs_agent")
-	p.configureAgentMiddleware(csAgent, csSessionID, customerID)
+	p.configureAgentMiddleware(csAgent)
 
-	csSess, _ := p.sessionManager.Create(csSessionID, csAgent)
+	csSess, _ := p.sessionManager.Create(context.Background(), csSessionID, csAgent)
 	defer csSess.Close()
 
 	csResponse, _ := csSess.Run(ctx,
@@ -625,9 +622,9 @@ func (p *ECommerceServicePlatform) MultiAgentOrchestration(customerID string) er
 
 	opSessionID := fmt.Sprintf("op_%s_%d", customerID, time.Now().UnixNano())
 	opAgent := p.agentFactory.CreateOperationAgent("op_agent")
-	p.configureAgentMiddleware(opAgent, opSessionID, customerID)
+	p.configureAgentMiddleware(opAgent)
 
-	opSess, _ := p.sessionManager.Create(opSessionID, opAgent)
+	opSess, _ := p.sessionManager.Create(context.Background(), opSessionID, opAgent)
 	defer opSess.Close()
 
 	opResponse, _ := opSess.Run(ctx,
@@ -644,9 +641,9 @@ func (p *ECommerceServicePlatform) MultiAgentOrchestration(customerID string) er
 
 	qaSessionID := fmt.Sprintf("qa_%s_%d", customerID, time.Now().UnixNano())
 	qaAgent := p.agentFactory.CreateQAAgent("qa_agent")
-	p.configureAgentMiddleware(qaAgent, qaSessionID, customerID)
+	p.configureAgentMiddleware(qaAgent)
 
-	qaSess, _ := p.sessionManager.Create(qaSessionID, qaAgent)
+	qaSess, _ := p.sessionManager.Create(context.Background(), qaSessionID, qaAgent)
 	defer qaSess.Close()
 
 	qaResponse, _ := qaSess.Run(ctx,
@@ -664,9 +661,9 @@ func (p *ECommerceServicePlatform) MultiAgentOrchestration(customerID string) er
 
 	kbSessionID := fmt.Sprintf("kb_%s_%d", customerID, time.Now().UnixNano())
 	kbAgent := p.agentFactory.CreateKnowledgeAgent("kb_agent")
-	p.configureAgentMiddleware(kbAgent, kbSessionID, customerID)
+	p.configureAgentMiddleware(kbAgent)
 
-	kbSess, _ := p.sessionManager.Create(kbSessionID, kbAgent)
+	kbSess, _ := p.sessionManager.Create(context.Background(), kbSessionID, kbAgent)
 	defer kbSess.Close()
 
 	kbResponse, _ := kbSess.Run(ctx,
@@ -685,7 +682,11 @@ func (p *ECommerceServicePlatform) MultiAgentOrchestration(customerID string) er
 	log.Printf("✓ 运营Session (ID: %s) 记录了%d条消息\n", opSessionID, len(opSess.GetMessages()))
 	log.Printf("✓ QA Session (ID: %s) 记录了%d条消息\n", qaSessionID, len(qaSess.GetMessages()))
 	log.Printf("✓ 知识Session (ID: %s) 记录了%d条消息\n", kbSessionID, len(kbSess.GetMessages()))
-	log.Printf("✓ 总活跃Sessions: %d\n", p.sessionManager.Count())
+	if count, err := p.sessionManager.Count(context.Background()); err == nil {
+		log.Printf("✓ 总活跃Sessions: %d\n", count)
+	} else {
+		log.Printf("✓ 总活跃Sessions: 查询失败 (%v)\n", err)
+	}
 
 	return nil
 }
@@ -712,8 +713,7 @@ func (p *ECommerceServicePlatform) ParallelCustomerHandling(customerCount int) {
 
 		// 为每个客户创建一个代理和任务
 		csAgent := p.agentFactory.CreateCustomerServiceAgent(fmt.Sprintf("cs_agent_%d", i))
-		sessionID := fmt.Sprintf("parallel_%s_%d", custID, time.Now().UnixNano()+int64(i))
-		p.configureAgentMiddleware(csAgent, sessionID, custID)
+		p.configureAgentMiddleware(csAgent)
 
 		task := &runner.Task{
 			ID:    fmt.Sprintf("task_%d_%s", i, custID),
@@ -769,7 +769,11 @@ func (p *ECommerceServicePlatform) AnalyzeOperationalMetrics() {
 		p.metrics.FailedRequests,
 		float64(p.metrics.FailedRequests)*100/float64(p.metrics.TotalRequests))
 	log.Printf("平均响应时间:    %.2f ms\n", float64(p.metrics.AverageResponseTime.Milliseconds()))
-	log.Printf("当前活跃Sessions: %d\n\n", p.sessionManager.Count())
+	if count, err := p.sessionManager.Count(context.Background()); err == nil {
+		log.Printf("当前活跃Sessions: %d\n\n", count)
+	} else {
+		log.Printf("当前活跃Sessions: 查询失败 (%v)\n\n", err)
+	}
 
 	// 客户和订单统计
 	p.customersMutex.RLock()
@@ -809,8 +813,6 @@ func (p *ECommerceServicePlatform) AnalyzeOperationalMetrics() {
 
 func (p *ECommerceServicePlatform) configureAgentMiddleware(
 	ag *agent.Agent,
-	sessionID string,
-	customerID string,
 ) {
 	// 请求日志中间件
 	ag.AddMiddleware(logger.NewRequestLogger(func(msg string) {

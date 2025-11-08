@@ -4,26 +4,49 @@ import (
 	"context"
 	"fmt"
 	"sync"
-	"time"
 
 	"github.com/sweetpotato0/ai-allin/agent"
 	"github.com/sweetpotato0/ai-allin/message"
+	"github.com/sweetpotato0/ai-allin/runtime"
 )
 
 // SharedSession represents a session that can be used by multiple agents.
 // It maintains shared conversation history that can be replayed across agents.
 type SharedSession struct {
 	Base
-	mu       sync.RWMutex
-	messages []*message.Message
+	mu sync.RWMutex
 }
 
 // NewShared creates a new shared session
 func NewShared(id string) *SharedSession {
 	return &SharedSession{
-		Base:     NewBase(id),
-		messages: make([]*message.Message, 0),
+		Base: NewBase(id, TypeShared),
 	}
+}
+
+// NewSharedFromRecord reconstructs a shared session from a snapshot.
+func NewSharedFromRecord(record *Record) *SharedSession {
+	if record == nil {
+		return nil
+	}
+	sess := &SharedSession{
+		Base: Base{
+			id:          record.ID,
+			sessionType: TypeShared,
+			State:       record.State,
+			CreatedAt:   record.CreatedAt,
+			UpdatedAt:   record.UpdatedAt,
+			Metadata:    cloneMetadata(record.Metadata),
+		},
+	}
+	sess.Base.SetMessages(record.Messages)
+	if record.LastMessage != nil {
+		sess.Base.SetLastMessage(record.LastMessage)
+	}
+	if record.LastDuration > 0 {
+		sess.Base.SetLastDuration(record.LastDuration)
+	}
+	return sess
 }
 
 // Run executes the agent with input (implements Session interface)
@@ -43,33 +66,33 @@ func (s *SharedSession) RunWithAgent(ctx context.Context, ag *agent.Agent, input
 		return "", fmt.Errorf("session %s is not active", s.ID())
 	}
 
-	// Clone agent to avoid modifying the original
-	cloned := ag.Clone()
-
-	// Restore conversation history to the cloned agent
-	cloned.ClearMessages()
-	for _, msg := range s.messages {
-		cloned.AddMessage(message.Clone(msg))
-	}
-
-	// Execute the agent with the input
-	response, err := cloned.Run(ctx, input)
+	executor := runtime.NewAgentExecutor(ag)
+	result, err := executor.Execute(ctx, &runtime.Request{
+		SessionID: s.ID(),
+		Input:     input,
+		History:   s.Base.Messages(),
+	})
 	if err != nil {
 		return "", fmt.Errorf("agent execution failed: %w", err)
 	}
 
 	// Update conversation history with all messages from the cloned agent
-	s.messages = message.CloneMessages(cloned.GetMessages())
-	s.UpdatedAt = time.Now()
+	s.Base.SetMessages(result.Messages)
+	if result.LastMessage != nil {
+		s.Base.SetLastMessage(result.LastMessage)
+	} else {
+		s.Base.SetLastMessage(nil)
+	}
+	s.Base.SetLastDuration(result.Duration)
 
-	return response, nil
+	return result.Output, nil
 }
 
 // GetMessages returns all messages in the session (implements Session interface)
 func (s *SharedSession) GetMessages() []*message.Message {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	return message.CloneMessages(s.messages)
+	return s.Base.Messages()
 }
 
 // GetState returns the current session state
@@ -88,4 +111,11 @@ func (s *SharedSession) Close() error {
 	}
 	s.SetState(StateClosed)
 	return nil
+}
+
+// Snapshot returns a serializable record of the shared session.
+func (s *SharedSession) Snapshot() *Record {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.Base.Snapshot()
 }

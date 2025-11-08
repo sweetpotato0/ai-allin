@@ -68,7 +68,7 @@ func TestSessionManagement(t *testing.T) {
 	sessionID := "test_session_001"
 
 	// 创建会话
-	sess, err := platform.sessionManager.Create(sessionID, agent)
+	sess, err := platform.sessionManager.Create(context.Background(), sessionID, agent)
 	if err != nil {
 		t.Fatalf("创建会话失败: %v", err)
 	}
@@ -102,14 +102,16 @@ func TestMultipleSessions(t *testing.T) {
 	for i := 0; i < sessionCount; i++ {
 		sessionID := fmt.Sprintf("test_session_%d", i)
 		agent := platform.agentFactory.CreateCustomerServiceAgent("test_agent")
-		_, err := platform.sessionManager.Create(sessionID, agent)
+		_, err := platform.sessionManager.Create(context.Background(), sessionID, agent)
 		if err != nil {
 			t.Fatalf("创建会话%d失败: %v", i, err)
 		}
 	}
 
-	if platform.sessionManager.Count() != sessionCount {
-		t.Fatalf("会话数量不正确: 期望%d, 得到%d", sessionCount, platform.sessionManager.Count())
+	if count, err := platform.sessionManager.Count(context.Background()); err != nil {
+		t.Fatalf("获取会话数量失败: %v", err)
+	} else if count != sessionCount {
+		t.Fatalf("会话数量不正确: 期望%d, 得到%d", sessionCount, count)
 	}
 
 	t.Logf("✓ 多会话测试通过 (创建了%d个会话)", sessionCount)
@@ -124,7 +126,7 @@ func TestContextMessageManagement(t *testing.T) {
 	agent := platform.agentFactory.CreateCustomerServiceAgent("test_agent")
 	sessionID := "context_test_001"
 
-	sess, _ := platform.sessionManager.Create(sessionID, agent)
+	sess, _ := platform.sessionManager.Create(context.Background(), sessionID, agent)
 	defer sess.Close()
 
 	// 初始消息 - Agent会自动添加系统提示词作为第一条消息
@@ -160,7 +162,7 @@ func BenchmarkSessionCreation(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		sessionID := fmt.Sprintf("bench_session_%d", i)
 		agent := platform.agentFactory.CreateCustomerServiceAgent("test_agent")
-		platform.sessionManager.Create(sessionID, agent)
+		platform.sessionManager.Create(context.Background(), sessionID, agent)
 	}
 }
 
@@ -321,7 +323,7 @@ func TestMemoryManagement(t *testing.T) {
 	for i := 0; i < 100; i++ {
 		sessionID := fmt.Sprintf("memory_test_%d", i)
 		agent := platform.agentFactory.CreateCustomerServiceAgent("test_agent")
-		sess, _ := platform.sessionManager.Create(sessionID, agent)
+		sess, _ := platform.sessionManager.Create(context.Background(), sessionID, agent)
 
 		// 模拟多轮对话
 		for j := 0; j < 10; j++ {

@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"sync"
 	"time"
 )
 
@@ -17,7 +16,6 @@ import (
 type APIServer struct {
 	platform *ECommerceServicePlatform
 	server   *http.Server
-	mu       sync.RWMutex
 }
 
 // API请求/响应模型
@@ -178,7 +176,7 @@ func (s *APIServer) handleSession(w http.ResponseWriter, r *http.Request) {
 		s.writeJSON(w, http.StatusOK, resp)
 	} else if r.Method == http.MethodDelete {
 		// 删除会话
-		s.platform.sessionManager.Delete(sessionID)
+		s.platform.sessionManager.Delete(context.Background(), sessionID)
 		s.writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
 	} else {
 		s.writeError(w, http.StatusMethodNotAllowed, "不支持的HTTP方法")
@@ -192,7 +190,11 @@ func (s *APIServer) listSessions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	sessionIDs := s.platform.sessionManager.List()
+	sessionIDs, err := s.platform.sessionManager.List(r.Context())
+	if err != nil {
+		s.writeError(w, http.StatusInternalServerError, fmt.Sprintf("获取会话列表失败: %v", err))
+		return
+	}
 	s.writeJSON(w, http.StatusOK, map[string]any{
 		"sessions": sessionIDs,
 		"count":    len(sessionIDs),
@@ -209,12 +211,18 @@ func (s *APIServer) getMetrics(w http.ResponseWriter, r *http.Request) {
 	s.platform.metrics.mu.RLock()
 	defer s.platform.metrics.mu.RUnlock()
 
+	activeSessions, err := s.platform.sessionManager.Count(r.Context())
+	if err != nil {
+		s.writeError(w, http.StatusInternalServerError, fmt.Sprintf("获取会话数量失败: %v", err))
+		return
+	}
+
 	metrics := map[string]any{
 		"total_requests":       s.platform.metrics.TotalRequests,
 		"successful_requests":  s.platform.metrics.SuccessfulRequests,
 		"failed_requests":      s.platform.metrics.FailedRequests,
 		"avg_response_time_ms": s.platform.metrics.AverageResponseTime.Milliseconds(),
-		"active_sessions":      s.platform.sessionManager.Count(),
+		"active_sessions":      activeSessions,
 		"success_rate": float64(s.platform.metrics.SuccessfulRequests) /
 			float64(s.platform.metrics.TotalRequests) * 100,
 	}
@@ -232,10 +240,16 @@ func (s *APIServer) healthCheck(w http.ResponseWriter, r *http.Request) {
 	s.platform.metrics.mu.RLock()
 	defer s.platform.metrics.mu.RUnlock()
 
+	activeSessions, err := s.platform.sessionManager.Count(r.Context())
+	if err != nil {
+		s.writeError(w, http.StatusInternalServerError, fmt.Sprintf("获取会话数量失败: %v", err))
+		return
+	}
+
 	resp := HealthCheckResponse{
 		Status:            "healthy",
 		Timestamp:         time.Now().Format(time.RFC3339),
-		ActiveSessions:    s.platform.sessionManager.Count(),
+		ActiveSessions:    activeSessions,
 		DatabaseConnected: true, // 实际应该检查真实数据库
 		RedisConnected:    true, // 实际应该检查真实Redis
 		CacheHitRate:      0.95,

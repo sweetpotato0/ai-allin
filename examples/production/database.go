@@ -321,7 +321,6 @@ func (ds *DatabaseService) Close() error {
 type CacheService struct {
 	config    *CacheConfig
 	connected bool
-	mu        sync.RWMutex
 }
 
 // CacheConfig 缓存配置

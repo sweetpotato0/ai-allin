@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/sweetpotato0/ai-allin/agent"
 	"github.com/sweetpotato0/ai-allin/message"
@@ -288,54 +289,112 @@ func TestMultipleSessions(t *testing.T) {
 	}
 }
 
+func TestSingleSessionSnapshotIsolation(t *testing.T) {
+	ag := agent.New(agent.WithSystemPrompt("sys"))
+	sess := New("sess1", ag)
+
+	sess.Base.SetMessages([]*message.Message{
+		message.NewMessage(message.RoleSystem, "sys"),
+		message.NewMessage(message.RoleUser, "hello"),
+	})
+
+	snapshot := sess.Snapshot()
+	snapshot.Messages[1].Content = "mutated"
+
+	messages := sess.GetMessages()
+	if messages[1].Content != "hello" {
+		t.Errorf("expected snapshot mutations to not affect session state")
+	}
+}
+
+func TestSingleSessionNewFromRecord(t *testing.T) {
+	record := &Record{
+		ID:        "sess-record",
+		Type:      TypeSingleAgent,
+		State:     StateActive,
+		Messages:  []*message.Message{message.NewMessage(message.RoleUser, "hi")},
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+
+	ag := agent.New(agent.WithName("rehydrated"))
+	sess := NewSingleFromRecord(record, ag)
+
+	if sess.ID() != record.ID {
+		t.Fatalf("expected session ID %s, got %s", record.ID, sess.ID())
+	}
+
+	if len(sess.GetMessages()) != len(record.Messages) {
+		t.Fatalf("expected %d messages, got %d", len(record.Messages), len(sess.GetMessages()))
+	}
+}
+
+func TestSharedSessionSnapshotRoundTrip(t *testing.T) {
+	sess := NewShared("shared-1")
+	sess.Base.SetMessages([]*message.Message{
+		message.NewMessage(message.RoleSystem, "sys"),
+		message.NewMessage(message.RoleUser, "Hello"),
+	})
+
+	snap := sess.Snapshot()
+	if snap.Type != TypeShared {
+		t.Fatalf("expected snapshot type shared, got %s", snap.Type)
+	}
+
+	rehydrated := NewSharedFromRecord(snap)
+	if len(rehydrated.GetMessages()) != len(snap.Messages) {
+		t.Fatalf("expected %d messages, got %d", len(snap.Messages), len(rehydrated.GetMessages()))
+	}
+}
+
 // newTestStore creates a simple test store implementation
 func newTestStore() Store {
 	return &testStore{
-		sessions: make(map[string]Session),
+		records: make(map[string]*Record),
 	}
 }
 
-// testStore is a simple test implementation of Store
+// testStore is a simple in-memory implementation of Store for tests.
 type testStore struct {
-	mu       sync.RWMutex
-	sessions map[string]Session
+	mu      sync.RWMutex
+	records map[string]*Record
 }
 
-func (s *testStore) Save(ctx context.Context, sess Session) error {
+func (s *testStore) Save(ctx context.Context, record *Record) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if sess == nil {
-		return nil
+	if record == nil {
+		return fmt.Errorf("record cannot be nil")
 	}
-	s.sessions[sess.ID()] = sess
+	s.records[record.ID] = record.Clone()
 	return nil
 }
 
-func (s *testStore) Load(ctx context.Context, id string) (Session, error) {
+func (s *testStore) Load(ctx context.Context, id string) (*Record, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	sess, exists := s.sessions[id]
+	record, exists := s.records[id]
 	if !exists {
 		return nil, fmt.Errorf("session %s not found", id)
 	}
-	return sess, nil
+	return record.Clone(), nil
 }
 
 func (s *testStore) Delete(ctx context.Context, id string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if _, exists := s.sessions[id]; !exists {
+	if _, exists := s.records[id]; !exists {
 		return fmt.Errorf("session %s not found", id)
 	}
-	delete(s.sessions, id)
+	delete(s.records, id)
 	return nil
 }
 
 func (s *testStore) List(ctx context.Context) ([]string, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	ids := make([]string, 0, len(s.sessions))
-	for id := range s.sessions {
+	ids := make([]string, 0, len(s.records))
+	for id := range s.records {
 		ids = append(ids, id)
 	}
 	return ids, nil
@@ -344,12 +403,12 @@ func (s *testStore) List(ctx context.Context) ([]string, error) {
 func (s *testStore) Count(ctx context.Context) (int, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	return len(s.sessions), nil
+	return len(s.records), nil
 }
 
 func (s *testStore) Exists(ctx context.Context, id string) (bool, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	_, exists := s.sessions[id]
+	_, exists := s.records[id]
 	return exists, nil
 }

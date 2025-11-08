@@ -228,7 +228,7 @@ Customer Inquiry
 
 ```go
 // 创建Session
-sess, err := sessionManager.Create(sessionID, agent)
+sess, err := sessionManager.Create(ctx, sessionID, agent)
 defer sess.Close()
 
 // Session内执行对话
@@ -289,7 +289,7 @@ ag.AddMiddleware(logger.NewRequestLogger("service"))
 ag.AddMiddleware(limiter.NewRateLimiter(100, time.Second))
 
 // 在Session中运行
-sess, _ := sessionManager.Create(sessionID, ag)
+sess, _ := sessionManager.Create(ctx, sessionID, ag)
 response, _ := sess.Run(ctx, input)
 ```
 

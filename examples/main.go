@@ -191,6 +191,13 @@ func sessionManagementExample() {
 		}
 
 		fmt.Printf("Session %s: %s\n", sessionID, result)
+
+		// Persist the latest session snapshot (messages, last message, duration)
+		if err := mgr.Save(ctx, sess); err != nil {
+			log.Printf("Error saving session snapshot: %v", err)
+		} else {
+			fmt.Printf("Snapshot stored for %s (last duration: %s)\n", sessionID, sess.Snapshot().LastDuration)
+		}
 	}
 
 	// List all sessions

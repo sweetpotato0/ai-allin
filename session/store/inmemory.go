@@ -11,31 +11,31 @@ import (
 // InMemoryStore implements session storage using in-memory storage
 type InMemoryStore struct {
 	mu       sync.RWMutex
-	sessions map[string]session.Session
+	sessions map[string]*session.Record
 }
 
 // NewInMemoryStore creates a new in-memory session store
 func NewInMemoryStore() *InMemoryStore {
 	return &InMemoryStore{
-		sessions: make(map[string]session.Session),
+		sessions: make(map[string]*session.Record),
 	}
 }
 
 // Save saves a session to the store
-func (s *InMemoryStore) Save(ctx context.Context, sess session.Session) error {
+func (s *InMemoryStore) Save(ctx context.Context, record *session.Record) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if sess == nil {
-		return fmt.Errorf("session cannot be nil")
+	if record == nil || record.ID == "" {
+		return fmt.Errorf("session record cannot be nil")
 	}
 
-	s.sessions[sess.ID()] = sess
+	s.sessions[record.ID] = record.Clone()
 	return nil
 }
 
 // Load loads a session from the store
-func (s *InMemoryStore) Load(ctx context.Context, id string) (session.Session, error) {
+func (s *InMemoryStore) Load(ctx context.Context, id string) (*session.Record, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -44,7 +44,7 @@ func (s *InMemoryStore) Load(ctx context.Context, id string) (session.Session, e
 		return nil, fmt.Errorf("session %s not found", id)
 	}
 
-	return sess, nil
+	return sess.Clone(), nil
 }
 
 // Delete removes a session from the store
@@ -91,6 +91,6 @@ func (s *InMemoryStore) Exists(ctx context.Context, id string) (bool, error) {
 func (s *InMemoryStore) Clear() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.sessions = make(map[string]session.Session)
+	s.sessions = make(map[string]*session.Record)
 	return nil
 }
