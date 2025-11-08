@@ -7,36 +7,36 @@ type Document = document.Document
 
 // Plan captures the multi-agent research plan emitted by the planner agent.
 type Plan struct {
-	Strategy string     `json:"strategy"`
-	Steps    []PlanStep `json:"steps"`
+	Strategy string     `json:"strategy"` // High-level approach for the end-to-end answer
+	Steps    []PlanStep `json:"steps"`    // Ordered tasks the pipeline should execute
 }
 
 // PlanStep enumerates one actionable task in the plan.
 type PlanStep struct {
-	ID                string   `json:"id"`
-	Goal              string   `json:"goal"`
-	Questions         []string `json:"questions,omitempty"`
-	ExpectedEvidence  string   `json:"expected_evidence,omitempty"`
+	ID                string   `json:"id"`                          // Stable identifier used in evidence records
+	Goal              string   `json:"goal"`                        // Human readable objective
+	Questions         []string `json:"questions,omitempty"`         // Extra clarifying questions / query hints
+	ExpectedEvidence  string   `json:"expected_evidence,omitempty"` // What signal or doc types unlock the step
 	DownstreamSupport string   `json:"downstream_support,omitempty"`
 }
 
 // Evidence links a retrieval result (document) to the plan step that needed it.
 type Evidence struct {
-	StepID   string             `json:"step_id"`
-	Query    string             `json:"query"`
-	Chunk    document.Chunk     `json:"chunk"`
-	Document *document.Document `json:"document,omitempty"`
-	Score    float32            `json:"score"`
-	Summary  string             `json:"summary,omitempty"`
+	StepID   string             `json:"step_id"`            // Which plan step this chunk supports
+	Query    string             `json:"query"`              // Query used to fetch the chunk
+	Chunk    document.Chunk     `json:"chunk"`              // Retrieved chunk payload
+	Document *document.Document `json:"document,omitempty"` // Optional parent document metadata
+	Score    float32            `json:"score"`              // Similarity score after reranking
+	Summary  string             `json:"summary,omitempty"`  // Short summary fed to downstream agents
 }
 
 // CriticFeedback is produced by the critic agent when the pipeline is configured
 // to run quality checks.
 type CriticFeedback struct {
-	Verdict     string   `json:"verdict"`
-	Issues      []string `json:"issues,omitempty"`
-	Notes       string   `json:"notes,omitempty"`
-	FinalAnswer string   `json:"final_answer,omitempty"`
+	Verdict     string   `json:"verdict"`                // approve | revise
+	Issues      []string `json:"issues,omitempty"`       // Concrete problems spotted by critic
+	Notes       string   `json:"notes,omitempty"`        // Free-form explanation
+	FinalAnswer string   `json:"final_answer,omitempty"` // Final answer (may equal draft)
 }
 
 // Response captures the structured pipeline result that applications consume.

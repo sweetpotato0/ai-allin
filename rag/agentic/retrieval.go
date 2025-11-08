@@ -19,6 +19,8 @@ type RetrievalResult struct {
 }
 
 // RetrievalEngine represents the contract the pipeline relies on for indexing/search.
+// Implementations may wrap the default chunk/embed/rerank pipeline provided here or
+// delegate to an entirely different system (e.g. hybrid BM25 + vector service).
 type RetrievalEngine interface {
 	IndexDocuments(ctx context.Context, docs ...document.Document) error
 	Search(ctx context.Context, query string) ([]RetrievalResult, error)
@@ -27,6 +29,7 @@ type RetrievalEngine interface {
 	Count(ctx context.Context) (int, error)
 }
 
+// defaultRetrieval is a thin adapter around rag/retriever that satisfies RetrievalEngine.
 type defaultRetrieval struct {
 	base *retriever.Retriever
 }

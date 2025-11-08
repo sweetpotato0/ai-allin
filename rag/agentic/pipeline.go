@@ -23,6 +23,13 @@ type Clients struct {
 }
 
 // Pipeline wires the multi-agent RAG workflow together.
+// Internally it manages three stages:
+//  1. planning/query generation
+//  2. retrieval (delegated to RetrievalEngine)
+//  3. synthesis + optional critique
+//
+// Each stage only depends on the data provided by the previous one which keeps the
+// execution graph easy to reason about.
 type Pipeline struct {
 	cfg        *Config
 	planner    *planner
@@ -34,11 +41,11 @@ type Pipeline struct {
 }
 
 type pipelineState struct {
-	Question string
-	Plan     *Plan
-	Evidence []Evidence
-	Draft    string
-	Critic   *CriticFeedback
+	Question string          // Original user question
+	Plan     *Plan           // Plan produced by planner node
+	Evidence []Evidence      // Collected evidence per step
+	Draft    string          // Writer response before critique
+	Critic   *CriticFeedback // Optional critic verdict
 }
 
 // NewPipeline creates a fully wired Agentic RAG pipeline.
@@ -144,6 +151,7 @@ func (p *Pipeline) Run(ctx context.Context, question string) (*Response, error) 
 }
 
 // IndexDocuments ingests documents into the vector store.
+// IndexDocuments chunks and embeds documents through the configured retrieval engine.
 func (p *Pipeline) IndexDocuments(ctx context.Context, docs ...Document) error {
 	casts := make([]document.Document, len(docs))
 	for i, doc := range docs {

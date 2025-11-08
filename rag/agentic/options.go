@@ -5,29 +5,35 @@ import (
 	"github.com/sweetpotato0/ai-allin/rag/reranker"
 )
 
-// Config controls the Agentic RAG pipeline behaviour.
+// Config controls behaviour of the Agentic pipeline as well as the retrieval stage.
+// It intentionally groups prompt/middleware knobs and low-level retrieval parameters
+// so callers can construct reproducible agents from a single struct.
 type Config struct {
-	Name            string
-	TopK            int
-	RerankTopK      int
-	MaxPlanSteps    int
-	EnableCritic    bool
-	GraphMaxVisits  int
-	PlannerPrompt   string
-	QueryPrompt     string
-	SynthesisPrompt string
-	CriticPrompt    string
-	ChunkSize       int
-	ChunkOverlap    int
-	chunker         chunking.Chunker
-	reranker        reranker.Reranker
-	retrieval       RetrievalEngine
+	Name           string            // Logical name for tracing/logging
+	TopK           int               // How many neighbors to pull from the vector store
+	RerankTopK     int               // How many results survive reranking
+	MaxPlanSteps   int               // Upper bound for planner emitted steps
+	EnableCritic   bool              // Toggle critic agent execution
+	GraphMaxVisits int               // Safety guard for graph execution
+
+	PlannerPrompt   string // Custom system prompt for planner agent
+	QueryPrompt     string // System prompt for researcher/query agent
+	SynthesisPrompt string // System prompt for writer/synthesizer agent
+	CriticPrompt    string // System prompt for critic agent
+
+	ChunkSize    int // Desired chunk size used by default chunker
+	ChunkOverlap int // Overlap between consecutive chunks
+
+	chunker   chunking.Chunker   // Optional override for chunking strategy
+	reranker  reranker.Reranker  // Optional override for reranking stage
+	retrieval RetrievalEngine    // Optional override for the entire retrieval engine
 }
 
 // Option customises the pipeline configuration.
 type Option func(*Config)
 
-// WithTopK overrides how many documents each plan step retrieves.
+// WithTopK overrides how many documents each plan step retrieves from the vector store
+// before reranking is applied.
 func WithTopK(k int) Option {
 	return func(cfg *Config) {
 		if k > 0 {
@@ -36,7 +42,7 @@ func WithTopK(k int) Option {
 	}
 }
 
-// WithRerankTopK caps the reranked results count.
+// WithRerankTopK caps how many results survive reranking and flow into generation.
 func WithRerankTopK(k int) Option {
 	return func(cfg *Config) {
 		if k > 0 {
