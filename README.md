@@ -260,7 +260,7 @@ func main() {
 }
 ```
 
-See `docs/rag/overview.md` for a deeper dive and `examples/rag/agentic` for a runnable demo with OpenAI plus a toy embedder.
+See `docs/rag/overview.md` for a deeper dive and `examples/rag/agentic` for a runnable demo with OpenAI plus a toy embedder. Already have a production retrieval stack? Wrap it and hand it to the pipeline via `agentic.WithRetriever(...)`.
 
 If you need to rehydrate sessions from a persistent store in a new process, register an `AgentResolver` with `session.WithAgentResolver` so the manager knows how to rebuild the underlying agent prototype for any single-agent session.
 

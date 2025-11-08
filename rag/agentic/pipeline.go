@@ -7,11 +7,7 @@ import (
 
 	"github.com/sweetpotato0/ai-allin/agent"
 	"github.com/sweetpotato0/ai-allin/graph"
-	"github.com/sweetpotato0/ai-allin/rag/chunking"
 	"github.com/sweetpotato0/ai-allin/rag/document"
-	embedderpkg "github.com/sweetpotato0/ai-allin/rag/embedder"
-	"github.com/sweetpotato0/ai-allin/rag/reranker"
-	"github.com/sweetpotato0/ai-allin/rag/retriever"
 	"github.com/sweetpotato0/ai-allin/vector"
 )
 
@@ -33,7 +29,7 @@ type Pipeline struct {
 	researcher *researcher
 	writer     *synthesizer
 	critic     *critic
-	retriever  *retriever.Retriever
+	retrieval  RetrievalEngine
 	graph      *graph.Graph
 }
 
@@ -57,36 +53,15 @@ func NewPipeline(clients Clients, embedder vector.Embedder, store vector.VectorS
 	if writerLLM == nil {
 		return nil, fmt.Errorf("writer client is required")
 	}
-	if embedder == nil {
-		return nil, fmt.Errorf("embedder is required")
-	}
-	if store == nil {
-		return nil, fmt.Errorf("vector store is required")
-	}
 
-	chunker := cfg.chunker
-	if chunker == nil {
-		chunker = chunking.NewSimpleChunker(
-			chunking.WithChunkSize(cfg.ChunkSize),
-			chunking.WithOverlap(cfg.ChunkOverlap),
-		)
+	engine := cfg.retrieval
+	if engine == nil {
+		var err error
+		engine, err = newDefaultRetrievalEngine(store, embedder, cfg)
+		if err != nil {
+			return nil, err
+		}
 	}
-
-	embedAdapter := embedderpkg.NewVectorAdapter(embedder)
-
-	rer := cfg.reranker
-	if rer == nil {
-		rer = reranker.NewCosineReranker()
-	}
-
-	ret := retriever.New(
-		store,
-		embedAdapter,
-		chunker,
-		rer,
-		retriever.WithSearchTopK(cfg.TopK),
-		retriever.WithRerankTopK(cfg.RerankTopK),
-	)
 
 	p := &Pipeline{
 		cfg:        cfg,
@@ -94,7 +69,7 @@ func NewPipeline(clients Clients, embedder vector.Embedder, store vector.VectorS
 		researcher: newResearcher(pickClient(clients.Researcher, clients.Default), cfg),
 		writer:     newSynthesizer(writerLLM, cfg),
 		critic:     nil,
-		retriever:  ret,
+		retrieval:  engine,
 	}
 	if cfg.EnableCritic {
 		p.critic = newCritic(pickClient(clients.Critic, clients.Default), cfg)
@@ -182,17 +157,20 @@ func (p *Pipeline) IndexDocuments(ctx context.Context, docs ...Document) error {
 			Metadata: cloneMetadata(doc.Metadata),
 		}
 	}
-	return p.retriever.IndexDocuments(ctx, casts...)
+	if len(casts) == 0 {
+		return nil
+	}
+	return p.retrieval.IndexDocuments(ctx, casts...)
 }
 
 // ClearDocuments removes all indexed documents.
 func (p *Pipeline) ClearDocuments(ctx context.Context) error {
-	return p.retriever.Clear(ctx)
+	return p.retrieval.Clear(ctx)
 }
 
 // CountDocuments returns the number of indexed documents.
 func (p *Pipeline) CountDocuments(ctx context.Context) (int, error) {
-	return p.retriever.Count(ctx)
+	return p.retrieval.Count(ctx)
 }
 
 func (p *Pipeline) startNode(ctx context.Context, state graph.State) (graph.State, error) {
@@ -236,12 +214,12 @@ func (p *Pipeline) researchNode(ctx context.Context, state graph.State) (graph.S
 			return state, err
 		}
 		for _, q := range queries {
-			results, err := p.retriever.Search(ctx, q)
+			results, err := p.retrieval.Search(ctx, q)
 			if err != nil {
 				return state, fmt.Errorf("vector search failed: %w", err)
 			}
 			for _, candidate := range results {
-				doc, ok := p.retriever.Document(candidate.Chunk.DocumentID)
+				doc, ok := p.retrieval.Document(candidate.Chunk.DocumentID)
 				if !ok {
 					continue
 				}

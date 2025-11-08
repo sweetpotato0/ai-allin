@@ -262,7 +262,7 @@ func main() {
 }
 ```
 
-更多细节请查看 `docs/rag/overview.md`，并参考 `examples/rag/agentic` 运行端到端示例。
+更多细节请查看 `docs/rag/overview.md`，并参考 `examples/rag/agentic` 运行端到端示例。若已有独立的检索系统，也可以通过 `agentic.WithRetriever(...)` 将其直接注入流水线，跳过默认的切片与索引步骤。
 
 ## 架构
 

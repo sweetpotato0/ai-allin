@@ -21,6 +21,7 @@ type Config struct {
 	ChunkOverlap    int
 	chunker         chunking.Chunker
 	reranker        reranker.Reranker
+	retrieval       RetrievalEngine
 }
 
 // Option customises the pipeline configuration.
@@ -128,6 +129,15 @@ func WithReranker(r reranker.Reranker) Option {
 	return func(cfg *Config) {
 		if r != nil {
 			cfg.reranker = r
+		}
+	}
+}
+
+// WithRetriever sets a fully managed retrieval engine, bypassing the built-in chunk/embed construction.
+func WithRetriever(engine RetrievalEngine) Option {
+	return func(cfg *Config) {
+		if engine != nil {
+			cfg.retrieval = engine
 		}
 	}
 }

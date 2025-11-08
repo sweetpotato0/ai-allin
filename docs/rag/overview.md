@@ -108,6 +108,7 @@ func main() {
 - **Document ingestion** – use `IndexDocuments`, `ClearDocuments`, and `CountDocuments` to control the knowledge base. Documents can carry arbitrary metadata for downstream auditing.
 - **Retrieval depth** – `agentic.WithTopK(k)` / `agentic.WithRerankTopK(k)` control search fan-out and reranker cutoffs.
 - **Chunking & reranking** – swap in `agentic.WithChunker(...)` or `agentic.WithReranker(...)` to control how data is prepared and scored.
+- **Bring your own retriever** – inject any retrieval implementation (hybrid search, external service, etc.) via `agentic.WithRetriever(...)`.
 - **Prompts** – override planner/query/writer/critic prompts with `WithPlannerPrompt`, `WithQueryPrompt`, `WithSynthesisPrompt`, and `WithCriticPrompt`.
 - **Critic agent** – disable it via `WithCritic(false)` or supply a different LLM client through `Clients.Critic`.
 - **Graph extensions** – the underlying `graph.Graph` is stored on the pipeline; you can fork the package or wrap the pipeline to inject extra nodes (tool calls, structured logging, telemetry, etc.).
