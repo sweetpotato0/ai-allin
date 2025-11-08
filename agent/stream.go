@@ -21,7 +21,7 @@ type StreamLLMClient interface {
 // RunStream executes the agent with streaming output
 // It calls the callback function for each token received from the LLM
 func (a *Agent) RunStream(ctx context.Context, input string, callback StreamCallback) (string, error) {
-	if err := a.loadToolProviders(ctx); err != nil {
+	if err := a.ensureToolProviders(ctx); err != nil {
 		return "", err
 	}
 

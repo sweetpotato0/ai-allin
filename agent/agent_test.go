@@ -203,3 +203,29 @@ func TestAgentWithProvider(t *testing.T) {
 		t.Errorf("LLM not set correctly")
 	}
 }
+
+func TestAgentRestoreMessages(t *testing.T) {
+	agent := New(WithSystemPrompt("default"))
+
+	customHistory := []*message.Message{
+		message.NewMessage(message.RoleSystem, "override"),
+		message.NewMessage(message.RoleUser, "hello"),
+	}
+
+	agent.RestoreMessages(customHistory)
+
+	messages := agent.GetMessages()
+	if len(messages) != 2 {
+		t.Fatalf("expected 2 messages after restore, got %d", len(messages))
+	}
+
+	if messages[0].Content != "override" {
+		t.Errorf("expected system prompt to be restored, got %s", messages[0].Content)
+	}
+
+	agent.RestoreMessages(nil)
+	messages = agent.GetMessages()
+	if len(messages) == 0 || messages[0].Content != "default" {
+		t.Errorf("expected fallback to default system prompt, got %+v", messages)
+	}
+}

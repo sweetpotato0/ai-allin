@@ -3,13 +3,13 @@ package agent
 import (
 	"context"
 	"fmt"
-	"sync"
 
 	agentContext "github.com/sweetpotato0/ai-allin/context"
 	"github.com/sweetpotato0/ai-allin/memory"
 	"github.com/sweetpotato0/ai-allin/message"
 	"github.com/sweetpotato0/ai-allin/middleware"
 	"github.com/sweetpotato0/ai-allin/prompt"
+	runtimeprovider "github.com/sweetpotato0/ai-allin/runtime/provider"
 	"github.com/sweetpotato0/ai-allin/tool"
 )
 
@@ -42,10 +42,7 @@ type Agent struct {
 	promptManager  *prompt.Manager
 	ctx            *agentContext.Context
 	middlewares    *middleware.MiddlewareChain
-	providerMu     sync.Mutex
-	toolProviders  []tool.Provider
-	providerLoaded map[tool.Provider]bool
-	providerWatch  map[tool.Provider]context.CancelFunc
+	toolSupervisor *runtimeprovider.ToolSupervisor
 }
 
 // Option is a function that configures an Agent
@@ -107,9 +104,10 @@ func WithToolProvider(provider tool.Provider) Option {
 		if provider == nil {
 			return
 		}
-		a.providerMu.Lock()
-		defer a.providerMu.Unlock()
-		a.toolProviders = append(a.toolProviders, provider)
+		if a.toolSupervisor == nil {
+			a.toolSupervisor = runtimeprovider.NewToolSupervisor(a.tools, runtimeprovider.WithErrorHandler(a.reportToolError))
+		}
+		a.toolSupervisor.Register(provider)
 	}
 }
 
@@ -127,134 +125,36 @@ func WithMiddlewares(middlewares ...middleware.Middleware) Option {
 	}
 }
 
-func (a *Agent) loadToolProviders(ctx context.Context) error {
-	if !a.enableTools {
+func (a *Agent) ensureToolProviders(ctx context.Context) error {
+	if !a.enableTools || a.toolSupervisor == nil {
 		return nil
 	}
-
-	for _, provider := range a.getToolProviders() {
-		if provider == nil {
-			continue
-		}
-
-		if a.isProviderLoaded(provider) {
-			continue
-		}
-
-		if err := a.updateProviderTools(ctx, provider); err != nil {
-			return err
-		}
-
-		a.markProviderLoaded(provider)
-		a.startProviderWatcher(provider)
-	}
-
-	return nil
+	return a.toolSupervisor.Refresh(ctx)
 }
 
-func (a *Agent) getToolProviders() []tool.Provider {
-	a.providerMu.Lock()
-	defer a.providerMu.Unlock()
-	return append([]tool.Provider(nil), a.toolProviders...)
-}
-
-func (a *Agent) isProviderLoaded(provider tool.Provider) bool {
-	a.providerMu.Lock()
-	defer a.providerMu.Unlock()
-	return a.providerLoaded[provider]
-}
-
-func (a *Agent) markProviderLoaded(provider tool.Provider) {
-	a.providerMu.Lock()
-	defer a.providerMu.Unlock()
-	if a.providerLoaded == nil {
-		a.providerLoaded = make(map[tool.Provider]bool)
-	}
-	a.providerLoaded[provider] = true
-}
-
-func (a *Agent) updateProviderTools(ctx context.Context, provider tool.Provider) error {
-	tools, err := provider.Tools(ctx)
-	if err != nil {
-		return fmt.Errorf("load tools from provider: %w", err)
-	}
-
-	for _, t := range tools {
-		if t == nil || t.Name == "" {
-			continue
-		}
-		if err := a.tools.Upsert(t); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func (a *Agent) startProviderWatcher(provider tool.Provider) {
-	ch := provider.ToolsChanged()
-	if ch == nil {
+func (a *Agent) reportToolError(err error) {
+	if err == nil || a.ctx == nil {
 		return
 	}
-
-	a.providerMu.Lock()
-	if a.providerWatch == nil {
-		a.providerWatch = make(map[tool.Provider]context.CancelFunc)
-	}
-	if _, exists := a.providerWatch[provider]; exists {
-		a.providerMu.Unlock()
-		return
-	}
-	ctx, cancel := context.WithCancel(context.Background())
-	a.providerWatch[provider] = cancel
-	a.providerMu.Unlock()
-
-	go a.watchProvider(ctx, provider, ch)
-}
-
-func (a *Agent) watchProvider(ctx context.Context, provider tool.Provider, ch <-chan struct{}) {
-	defer a.removeProviderWatcher(provider)
-
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case _, ok := <-ch:
-			if !ok {
-				return
-			}
-			if err := a.updateProviderTools(ctx, provider); err != nil {
-				a.ctx.AddMessage(message.NewMessage(message.RoleSystem, fmt.Sprintf("Failed to refresh tools: %v", err)))
-			}
-		}
-	}
-}
-
-func (a *Agent) removeProviderWatcher(provider tool.Provider) {
-	a.providerMu.Lock()
-	defer a.providerMu.Unlock()
-	if cancel, ok := a.providerWatch[provider]; ok {
-		cancel()
-		delete(a.providerWatch, provider)
-	}
+	a.ctx.AddMessage(message.NewMessage(message.RoleSystem, fmt.Sprintf("Failed to refresh tools: %v", err)))
 }
 
 // New creates a new agent with the given options
 func New(opts ...Option) *Agent {
 	// Default values
 	agent := &Agent{
-		name:           "Agent",
-		systemPrompt:   "You are a helpful AI assistant.",
-		maxIterations:  10,
-		temperature:    0.7,
-		enableMemory:   false,
-		enableTools:    true,
-		tools:          tool.NewRegistry(),
-		promptManager:  prompt.NewManager(),
-		ctx:            agentContext.New(),
-		middlewares:    middleware.NewChain(),
-		providerLoaded: make(map[tool.Provider]bool),
-		providerWatch:  make(map[tool.Provider]context.CancelFunc),
+		name:          "Agent",
+		systemPrompt:  "You are a helpful AI assistant.",
+		maxIterations: 10,
+		temperature:   0.7,
+		enableMemory:  false,
+		enableTools:   true,
+		tools:         tool.NewRegistry(),
+		promptManager: prompt.NewManager(),
+		ctx:           agentContext.New(),
+		middlewares:   middleware.NewChain(),
 	}
+	agent.toolSupervisor = runtimeprovider.NewToolSupervisor(agent.tools, runtimeprovider.WithErrorHandler(agent.reportToolError))
 
 	// Apply options
 	for _, opt := range opts {
@@ -318,9 +218,28 @@ func (a *Agent) ClearMessages() {
 	}
 }
 
+// RestoreMessages replaces the current conversation history with the provided messages.
+// System prompts should be included in the provided slice; when the slice is empty
+// the agent falls back to the default system prompt.
+func (a *Agent) RestoreMessages(messages []*message.Message) {
+	a.ctx.Clear()
+	if len(messages) == 0 {
+		if a.systemPrompt != "" {
+			a.ctx.AddMessage(message.NewMessage(message.RoleSystem, a.systemPrompt))
+		}
+		return
+	}
+	for _, msg := range messages {
+		if msg == nil {
+			continue
+		}
+		a.ctx.AddMessage(message.Clone(msg))
+	}
+}
+
 // Run executes the agent with the given input
 func (a *Agent) Run(ctx context.Context, input string) (string, error) {
-	if err := a.loadToolProviders(ctx); err != nil {
+	if err := a.ensureToolProviders(ctx); err != nil {
 		return "", err
 	}
 
@@ -457,8 +376,10 @@ func (a *Agent) Clone() *Agent {
 		cloned.middlewares = middleware.NewChain(a.middlewares.List()...)
 	}
 
-	if len(a.toolProviders) > 0 {
-		cloned.toolProviders = append(cloned.toolProviders, a.toolProviders...)
+	if a.toolSupervisor != nil && cloned.toolSupervisor != nil {
+		for _, provider := range a.toolSupervisor.Providers() {
+			cloned.toolSupervisor.Register(provider)
+		}
 	}
 
 	return cloned
