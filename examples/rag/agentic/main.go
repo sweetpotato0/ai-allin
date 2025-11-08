@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"github.com/sweetpotato0/ai-allin/contrib/provider/openai"
+	inmemory "github.com/sweetpotato0/ai-allin/contrib/vector/inmemory"
 	"github.com/sweetpotato0/ai-allin/rag/agentic"
-	vectorstore "github.com/sweetpotato0/ai-allin/vector/store"
 )
 
 func main() {
@@ -24,7 +24,7 @@ func main() {
 
 	// In production, replace keywordEmbedder with a proper embedding provider (OpenAI, Cohere, etc).
 	embedder := newKeywordEmbedder()
-	store := vectorstore.NewInMemoryVectorStore()
+	store := inmemory.NewInMemoryVectorStore()
 
 	pipeline, err := agentic.NewPipeline(
 		agentic.Clients{Default: llm},

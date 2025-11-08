@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/sweetpotato0/ai-allin/contrib/vector/inmemory"
 	"github.com/sweetpotato0/ai-allin/message"
-	vectorstore "github.com/sweetpotato0/ai-allin/vector/store"
 )
 
 func TestPipelineRunProducesResponse(t *testing.T) {
@@ -22,7 +22,7 @@ func TestPipelineRunProducesResponse(t *testing.T) {
 		response: `{"verdict":"approve","issues":[],"final_answer":"Approved final answer with [Doc:shipping-policy]."}`,
 	}
 
-	store := vectorstore.NewInMemoryVectorStore()
+	store := inmemory.NewInMemoryVectorStore()
 	embedder := &keywordEmbedder{}
 
 	pipe, err := NewPipeline(
@@ -76,7 +76,7 @@ func TestPipelineWithoutCritic(t *testing.T) {
 		response: "Return answer referencing [Doc:returns].",
 	}
 
-	store := vectorstore.NewInMemoryVectorStore()
+	store := inmemory.NewInMemoryVectorStore()
 	embedder := &keywordEmbedder{}
 
 	pipe, err := NewPipeline(

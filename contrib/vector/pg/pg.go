@@ -1,4 +1,4 @@
-package store
+package pg
 
 import (
 	"context"
@@ -13,10 +13,10 @@ import (
 
 // PGVectorStore implements VectorStore using PostgreSQL with pgvector extension
 type PGVectorStore struct {
-	db           *sql.DB
-	dimension    int
-	tableName    string
-	indexMethod  string // HNSW or IVFFLAT
+	db          *sql.DB
+	dimension   int
+	tableName   string
+	indexMethod string // HNSW or IVFFLAT
 }
 
 // PGVectorConfig holds pgvector configuration
@@ -67,10 +67,10 @@ func NewPGVectorStore(config *PGVectorConfig) (*PGVectorStore, error) {
 	}
 
 	store := &PGVectorStore{
-		db:           db,
-		dimension:    config.Dimension,
-		tableName:    config.TableName,
-		indexMethod:  config.IndexType,
+		db:          db,
+		dimension:   config.Dimension,
+		tableName:   config.TableName,
+		indexMethod: config.IndexType,
 	}
 
 	// Enable pgvector extension and create table

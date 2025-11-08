@@ -6,7 +6,7 @@ import (
 
 	"github.com/sweetpotato0/ai-allin/rag/chunking"
 	"github.com/sweetpotato0/ai-allin/rag/document"
-	embedderpkg "github.com/sweetpotato0/ai-allin/rag/embedder"
+	"github.com/sweetpotato0/ai-allin/rag/embedder"
 	"github.com/sweetpotato0/ai-allin/rag/reranker"
 	"github.com/sweetpotato0/ai-allin/rag/retriever"
 	"github.com/sweetpotato0/ai-allin/vector"
@@ -95,7 +95,7 @@ func newDefaultRetrievalEngine(vec vector.VectorStore, emb vector.Embedder, cfg 
 		rer = reranker.NewCosineReranker()
 	}
 
-	adapter := embedderpkg.NewVectorAdapter(emb)
+	adapter := embedder.NewVectorAdapter(emb)
 	base := retriever.New(
 		vec,
 		adapter,

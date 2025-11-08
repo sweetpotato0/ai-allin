@@ -9,12 +9,12 @@ import (
 // It intentionally groups prompt/middleware knobs and low-level retrieval parameters
 // so callers can construct reproducible agents from a single struct.
 type Config struct {
-	Name           string            // Logical name for tracing/logging
-	TopK           int               // How many neighbors to pull from the vector store
-	RerankTopK     int               // How many results survive reranking
-	MaxPlanSteps   int               // Upper bound for planner emitted steps
-	EnableCritic   bool              // Toggle critic agent execution
-	GraphMaxVisits int               // Safety guard for graph execution
+	Name           string // Logical name for tracing/logging
+	TopK           int    // How many neighbors to pull from the vector store
+	RerankTopK     int    // How many results survive reranking
+	MaxPlanSteps   int    // Upper bound for planner emitted steps
+	EnableCritic   bool   // Toggle critic agent execution
+	GraphMaxVisits int    // Safety guard for graph execution
 
 	PlannerPrompt   string // Custom system prompt for planner agent
 	QueryPrompt     string // System prompt for researcher/query agent
@@ -24,9 +24,9 @@ type Config struct {
 	ChunkSize    int // Desired chunk size used by default chunker
 	ChunkOverlap int // Overlap between consecutive chunks
 
-	chunker   chunking.Chunker   // Optional override for chunking strategy
-	reranker  reranker.Reranker  // Optional override for reranking stage
-	retrieval RetrievalEngine    // Optional override for the entire retrieval engine
+	chunker   chunking.Chunker  // Optional override for chunking strategy
+	reranker  reranker.Reranker // Optional override for reranking stage
+	retrieval RetrievalEngine   // Optional override for the entire retrieval engine
 }
 
 // Option customises the pipeline configuration.
