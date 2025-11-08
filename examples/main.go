@@ -6,11 +6,11 @@ import (
 	"log"
 
 	"github.com/sweetpotato0/ai-allin/agent"
+	"github.com/sweetpotato0/ai-allin/contrib/session/inmemory"
 	"github.com/sweetpotato0/ai-allin/graph"
 	"github.com/sweetpotato0/ai-allin/message"
 	"github.com/sweetpotato0/ai-allin/runner"
 	"github.com/sweetpotato0/ai-allin/session"
-	"github.com/sweetpotato0/ai-allin/session/store"
 	"github.com/sweetpotato0/ai-allin/tool"
 )
 
@@ -170,7 +170,7 @@ func sessionManagementExample() {
 	llm := &MockLLMClient{}
 
 	// Create session manager with in-memory store
-	mgr := session.NewManager(session.WithStore(store.NewInMemoryStore()))
+	mgr := session.NewManager(session.WithStore(inmemory.NewInMemoryStore()))
 
 	// Create multiple sessions
 	for i := 1; i <= 3; i++ {

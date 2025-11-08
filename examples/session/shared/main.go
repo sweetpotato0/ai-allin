@@ -6,16 +6,16 @@ import (
 	"log"
 
 	"github.com/sweetpotato0/ai-allin/agent"
+	"github.com/sweetpotato0/ai-allin/contrib/session/inmemory"
 	"github.com/sweetpotato0/ai-allin/message"
 	"github.com/sweetpotato0/ai-allin/session"
-	"github.com/sweetpotato0/ai-allin/session/store"
 )
 
 func main() {
 	ctx := context.Background()
 
 	// Create session manager with in-memory store
-	mgr := session.NewManager(session.WithStore(store.NewInMemoryStore()))
+	mgr := session.NewManager(session.WithStore(inmemory.NewInMemoryStore()))
 	sessionID := "shared-conversation"
 
 	researcher := agent.New(

@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/sweetpotato0/ai-allin/memory/store"
+	"github.com/sweetpotato0/ai-allin/contrib/memory/inmemory"
 	"github.com/sweetpotato0/ai-allin/message"
 	"github.com/sweetpotato0/ai-allin/tool"
 )
@@ -63,7 +63,7 @@ func TestNewAgent(t *testing.T) {
 
 func TestAgentClone(t *testing.T) {
 	llm := NewMockLLMClient()
-	memoryStore := store.NewInMemoryStore()
+	memoryStore := inmemory.NewInMemoryStore()
 
 	original := New(
 		WithName("Original"),
@@ -152,7 +152,7 @@ func TestClearMessages(t *testing.T) {
 
 func TestSetMemory(t *testing.T) {
 	agent := New()
-	memoryStore := store.NewInMemoryStore()
+	memoryStore := inmemory.NewInMemoryStore()
 	agent.SetMemory(memoryStore)
 
 	if !agent.enableMemory {
@@ -187,7 +187,7 @@ func TestGetMiddlewareChain(t *testing.T) {
 }
 
 func TestAgentWithMemoryOption(t *testing.T) {
-	memoryStore := store.NewInMemoryStore()
+	memoryStore := inmemory.NewInMemoryStore()
 	agent := New(WithMemory(memoryStore))
 
 	if !agent.enableMemory {

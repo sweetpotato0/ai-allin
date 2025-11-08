@@ -7,7 +7,7 @@ import (
 	"strings"
 
 	_ "github.com/lib/pq"
-	errorskg "github.com/sweetpotato0/ai-allin/errors"
+	errorskg "github.com/sweetpotato0/ai-allin/pkg/errors"
 	"github.com/sweetpotato0/ai-allin/vector"
 )
 

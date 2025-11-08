@@ -1,4 +1,4 @@
-package store
+package redis
 
 import (
 	"context"
@@ -10,7 +10,30 @@ import (
 
 	"github.com/redis/go-redis/v9"
 	"github.com/sweetpotato0/ai-allin/memory"
+	"github.com/sweetpotato0/ai-allin/pkg/env"
 )
+
+// RedisConfigFromEnv loads Redis configuration from environment variables
+func RedisConfigFromEnv() *RedisConfig {
+	return &RedisConfig{
+		Addr:     env.GetEnv("REDIS_ADDR", "localhost:6379"),
+		Password: env.GetEnv("REDIS_PASSWORD", ""),
+		DB:       env.GetEnvInt("REDIS_DB", 0),
+		Prefix:   env.GetEnv("REDIS_PREFIX", "ai-allin:memory:"),
+		TTL:      env.GetEnvDuration("REDIS_TTL", 0),
+	}
+}
+
+// RedisSessionConfigFromEnv loads Redis session configuration from environment variables
+func RedisSessionConfigFromEnv() *RedisConfig {
+	return &RedisConfig{
+		Addr:     env.GetEnv("REDIS_SESSION_ADDR", "localhost:6379"),
+		Password: env.GetEnv("REDIS_SESSION_PASSWORD", ""),
+		DB:       env.GetEnvInt("REDIS_SESSION_DB", 1),
+		Prefix:   env.GetEnv("REDIS_SESSION_PREFIX", "ai-allin:session:"),
+		TTL:      env.GetEnvDuration("REDIS_SESSION_TTL", 24*time.Hour),
+	}
+}
 
 // RedisStore implements MemoryStore using Redis
 type RedisStore struct {

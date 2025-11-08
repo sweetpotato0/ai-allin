@@ -1,16 +1,26 @@
-package store
+package mongo
 
 import (
 	"context"
 	"fmt"
 	"time"
 
-	errorskg "github.com/sweetpotato0/ai-allin/errors"
 	"github.com/sweetpotato0/ai-allin/memory"
+	"github.com/sweetpotato0/ai-allin/pkg/env"
+	errorskg "github.com/sweetpotato0/ai-allin/pkg/errors"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
+
+// MongoConfigFromEnv loads MongoDB configuration from environment variables
+func MongoConfigFromEnv() *MongoConfig {
+	return &MongoConfig{
+		URI:        env.GetEnv("MONGODB_URI", "mongodb://localhost:27017"),
+		Database:   env.GetEnv("MONGODB_DB", "ai_allin"),
+		Collection: env.GetEnv("MONGODB_COLLECTION", "memories"),
+	}
+}
 
 // MongoStore implements MemoryStore using MongoDB
 type MongoStore struct {

@@ -1,4 +1,4 @@
-package store
+package pg
 
 import (
 	"context"
@@ -9,9 +9,22 @@ import (
 
 	_ "github.com/lib/pq"
 	cfg "github.com/sweetpotato0/ai-allin/config"
-	errorskg "github.com/sweetpotato0/ai-allin/errors"
 	"github.com/sweetpotato0/ai-allin/memory"
+	"github.com/sweetpotato0/ai-allin/pkg/env"
+	errorskg "github.com/sweetpotato0/ai-allin/pkg/errors"
 )
+
+// PostgresConfigFromEnv loads PostgreSQL configuration from environment variables
+func PostgresConfigFromEnv() *PostgresConfig {
+	return &PostgresConfig{
+		Host:     env.GetEnv("POSTGRES_HOST", "localhost"),
+		Port:     env.GetEnvInt("POSTGRES_PORT", 5432),
+		User:     env.GetEnv("POSTGRES_USER", "postgres"),
+		Password: env.GetEnv("POSTGRES_PASSWORD", ""),
+		DBName:   env.GetEnv("POSTGRES_DB", "ai_allin"),
+		SSLMode:  env.GetEnv("POSTGRES_SSLMODE", "disable"),
+	}
+}
 
 // PostgresStore implements MemoryStore using PostgreSQL
 type PostgresStore struct {
