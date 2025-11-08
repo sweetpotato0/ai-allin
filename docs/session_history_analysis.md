@@ -67,6 +67,8 @@ sess.Run(ctx, "用户消息1")  // Agent记录消息
 messages := sess.GetMessages()  // = agent.GetMessages()
 ```
 
+另外，可以通过 `sess.Snapshot()` 得到标准化的 `session.Record`，其中包括完整消息历史、最近一条助手回复(`LastMessage`)以及最新一轮的执行耗时(`LastDuration`)。Manager 会把这些字段持久化到任意 `session/store` 实现中，方便离线分析或跨进程恢复。
+
 ### 多个 Agent 共享同一个 Session
 
 当多个 Agent 需要围绕同一用户线程协作时，可使用 `session.Conversation` / `session.Orchestrator` 封装历史搬运逻辑：

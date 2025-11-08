@@ -17,7 +17,9 @@ A comprehensive, production-ready Go framework for building AI agents with strea
   - Redis with caching
   - MongoDB document storage
   - PGVector for embeddings
-- **Session Management**: Conversation session tracking and management, supporting single-agent and multi-agent shared sessions
+- **Session Management**: Conversation session tracking and management, supporting single-agent and multi-agent shared sessions, with serializable session records for persistence and analytics
+- **Runtime Executor Layer**: Agent specs and executors decouple runtime behavior from stored conversations, enabling custom execution strategies and observability
+- **Tool Supervisor**: A built-in supervisor keeps tool providers synchronized and refreshes tool schemas automatically
 - **Execution Graphs**: Workflow orchestration with conditional branching
 - **Thread-Safe Operations**: RWMutex protected concurrent access
 - **Configuration Validation**: Environment-based configuration with validation
@@ -66,6 +68,38 @@ func main() {
     println(response)
 }
 ```
+
+### Runtime Executor
+
+The `runtime` package lets you decouple persisted conversation state from the live `agent.Agent`. A runtime executor consumes a session transcript (`session.Record`) and produces a `runtime.TurnResult` with timing metadata plus the final assistant message:
+
+```go
+exec := runtime.NewAgentExecutor(ag)
+result, err := exec.Execute(ctx, &runtime.Request{
+    SessionID: "session-1",
+    Input:     "What's next?",
+    History:   existingMessages,
+})
+if err != nil {
+    log.Fatalf("executor failed: %v", err)
+}
+fmt.Println("assistant:", result.Output, "took", result.Duration)
+```
+
+This is the same executor that backs `session.SingleAgentSession` and `SharedSession`, so you can swap in alternative executors (streaming, tracing, multi-agent) without touching session code.
+
+### Tool Supervisor
+
+Registering a tool provider with `agent.WithToolProvider` now delegates to the runtime tool supervisor. The supervisor loads tools on demand, watches for provider updates, and refreshes the agent's registry automatically:
+
+```go
+ag := agent.New(
+    agent.WithProvider(llm),
+    agent.WithToolProvider(myProvider), // supervisor handles refresh & errors
+)
+```
+
+You can inspect refresh failures by adding middleware or memory stores—the supervisor pushes errors back into the agent's conversation as system messages so they can be logged or surfaced to observability pipelines.
 
 ### MCP Integration
 
@@ -161,6 +195,10 @@ func main() {
     fmt.Println(resp1, resp2)
 }
 ```
+
+Every session exposes a serializable `session.Record` (via `session.Session.Snapshot()`), which includes the full message transcript, the last assistant message, and timing metadata for the most recent turn. Combine this with `manager.Save(ctx, session)` after each interaction to persist state into any `session/store` implementation (in-memory, Redis, Postgres, etc.).
+
+If you need to rehydrate sessions from a persistent store in a new process, register an `AgentResolver` with `session.WithAgentResolver` so the manager knows how to rebuild the underlying agent prototype for any single-agent session.
 
 ## Architecture
 

@@ -17,7 +17,9 @@
   - Redis 缓存
   - MongoDB 文档存储
   - PGVector 向量嵌入
-- **会话管理**: 对话会话跟踪和管理，支持单 agent 和多 agent 共享会话
+- **会话管理**: 对话会话跟踪和管理，支持单 agent 和多 agent 共享会话，提供可持久化的会话快照与运行统计
+- **运行时执行层**：Agent Spec + Executor 解耦运行逻辑与会话数据，便于观测和扩展
+- **工具监督器**：内置监督器自动加载并刷新工具提供商，保持工具 schema 最新
 - **执行图**: 支持条件分支的工作流编排
 - **线程安全**: RWMutex 保护的并发访问
 - **配置验证**: 基于环境变量的配置与验证
@@ -66,6 +68,38 @@ func main() {
     println(response)
 }
 ```
+
+### 运行时执行器
+
+`runtime` 包让“运行配置”与“会话历史”解耦。你可以直接构造一个执行器，给它一份历史记录，它会返回最新的回复以及耗时等元数据：
+
+```go
+exec := runtime.NewAgentExecutor(ag)
+result, err := exec.Execute(ctx, &runtime.Request{
+    SessionID: "session-1",
+    Input:     "接下来怎么办？",
+    History:   historyMessages,
+})
+if err != nil {
+    log.Fatalf("executor 执行失败: %v", err)
+}
+fmt.Println("assistant:", result.Output, "duration:", result.Duration)
+```
+
+`session.SingleAgentSession` 与 `SharedSession` 也正是基于该执行器构建，因此你可以很容易地替换为自定义的执行策略（流式、带追踪、并行等）。
+
+### 工具监督器
+
+当你使用 `agent.WithToolProvider` 注册工具提供商时，新的工具监督器会自动拉取、缓存并监听提供商的变更：
+
+```go
+ag := agent.New(
+    agent.WithProvider(llm),
+    agent.WithToolProvider(myProvider),
+)
+```
+
+如果刷新失败，监督器会以系统消息的形式注入上下文，方便你通过日志或监控系统捕获。
 
 ### MCP 集成示例
 
@@ -161,6 +195,10 @@ func main() {
     fmt.Println(resp1, resp2)
 }
 ```
+
+每个会话都可以通过 `session.Session.Snapshot()` 生成 `session.Record`，其中包含完整消息历史、最近一次回复以及执行耗时。调用 `mgr.Save(ctx, sess)` 即可把最新快照写入任意 `session/store` 实现（内存、Redis、Postgres 等），用于持久化或分析。
+
+如果需要在新的进程中恢复单 Agent 会话，可以通过 `session.WithAgentResolver` 注册一个 Agent 解析器，让 `Manager` 知道如何为对应的 `session.Record` 重建 Agent。
 
 ## 架构
 

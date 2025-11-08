@@ -5,6 +5,13 @@ import (
 	"testing"
 )
 
+var noopExecute = func(ctx context.Context, state State) (State, error) {
+	if state == nil {
+		state = make(State)
+	}
+	return state, nil
+}
+
 func TestNewGraph(t *testing.T) {
 	g := NewGraph()
 	if g == nil {
@@ -18,6 +25,9 @@ func TestAddNode(t *testing.T) {
 	node := &Node{
 		Name: "test_node",
 		Type: NodeTypeCustom,
+		Execute: func(ctx context.Context, state State) (State, error) {
+			return state, nil
+		},
 	}
 
 	g.AddNode(node)
@@ -37,8 +47,9 @@ func TestAddNodeEmptyName(t *testing.T) {
 	g := NewGraph()
 
 	node := &Node{
-		Name: "",
-		Type: NodeTypeCustom,
+		Name:    "",
+		Type:    NodeTypeCustom,
+		Execute: func(ctx context.Context, state State) (State, error) { return state, nil },
 	}
 
 	defer func() {
@@ -57,8 +68,8 @@ func TestAddNodeEmptyName(t *testing.T) {
 func TestAddNodeDuplicate(t *testing.T) {
 	g := NewGraph()
 
-	node1 := &Node{Name: "dup_node", Type: NodeTypeCustom}
-	node2 := &Node{Name: "dup_node", Type: NodeTypeCustom}
+	node1 := &Node{Name: "dup_node", Type: NodeTypeCustom, Execute: noopExecute}
+	node2 := &Node{Name: "dup_node", Type: NodeTypeCustom, Execute: noopExecute}
 
 	g.AddNode(node1)
 
@@ -80,6 +91,9 @@ func TestAutoSetStartNode(t *testing.T) {
 	startNode := &Node{
 		Name: "start",
 		Type: NodeTypeStart,
+		Execute: func(ctx context.Context, state State) (State, error) {
+			return state, nil
+		},
 	}
 
 	g.AddNode(startNode)
@@ -95,6 +109,9 @@ func TestAutoSetEndNode(t *testing.T) {
 	endNode := &Node{
 		Name: "end",
 		Type: NodeTypeEnd,
+		Execute: func(ctx context.Context, state State) (State, error) {
+			return state, nil
+		},
 	}
 
 	g.AddNode(endNode)
@@ -107,7 +124,7 @@ func TestAutoSetEndNode(t *testing.T) {
 func TestSetStartNode(t *testing.T) {
 	g := NewGraph()
 
-	node := &Node{Name: "start_node", Type: NodeTypeCustom}
+	node := &Node{Name: "start_node", Type: NodeTypeCustom, Execute: noopExecute}
 	g.AddNode(node)
 
 	g.SetStartNode("start_node")
@@ -136,7 +153,7 @@ func TestSetStartNodeNotFound(t *testing.T) {
 func TestSetEndNode(t *testing.T) {
 	g := NewGraph()
 
-	node := &Node{Name: "end_node", Type: NodeTypeCustom}
+	node := &Node{Name: "end_node", Type: NodeTypeCustom, Execute: noopExecute}
 	g.AddNode(node)
 
 	g.SetEndNode("end_node")
@@ -183,6 +200,9 @@ func TestExecuteSimpleLinearGraph(t *testing.T) {
 	endNode := &Node{
 		Name: "end",
 		Type: NodeTypeEnd,
+		Execute: func(ctx context.Context, state State) (State, error) {
+			return state, nil
+		},
 	}
 
 	g.AddNode(startNode)
@@ -225,6 +245,9 @@ func TestExecuteWithCondition(t *testing.T) {
 	decisionNode := &Node{
 		Name: "decision",
 		Type: NodeTypeCondition,
+		Execute: func(ctx context.Context, state State) (State, error) {
+			return state, nil
+		},
 		Condition: func(ctx context.Context, state State) (string, error) {
 			val := state["value"].(int)
 			if val > 10 {
@@ -261,6 +284,9 @@ func TestExecuteWithCondition(t *testing.T) {
 	endNode := &Node{
 		Name: "end",
 		Type: NodeTypeEnd,
+		Execute: func(ctx context.Context, state State) (State, error) {
+			return state, nil
+		},
 	}
 
 	g.AddNode(startNode)
@@ -283,7 +309,7 @@ func TestExecuteWithCondition(t *testing.T) {
 func TestExecuteNoStartNode(t *testing.T) {
 	g := NewGraph()
 
-	node := &Node{Name: "node", Type: NodeTypeCustom}
+	node := &Node{Name: "node", Type: NodeTypeCustom, Execute: noopExecute}
 	g.AddNode(node)
 
 	_, err := g.Execute(context.Background(), nil)
@@ -298,6 +324,9 @@ func TestExecuteNodeNotFound(t *testing.T) {
 	startNode := &Node{
 		Name: "start",
 		Type: NodeTypeStart,
+		Execute: func(ctx context.Context, state State) (State, error) {
+			return state, nil
+		},
 		Next: "nonexistent",
 	}
 
@@ -356,6 +385,9 @@ func TestExecuteWithInitialState(t *testing.T) {
 	endNode := &Node{
 		Name: "end",
 		Type: NodeTypeEnd,
+		Execute: func(ctx context.Context, state State) (State, error) {
+			return state, nil
+		},
 	}
 
 	g.AddNode(node)
