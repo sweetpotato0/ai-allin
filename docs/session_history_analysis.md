@@ -122,26 +122,26 @@ sess.GetMessages() ← Agent.Context [保留所有历史]
 ✅ **需要创建 Session，Session保留历史**
 
 ```go
-builder.AddNode("multi_turn", graph.NodeTypeLLM, 
+builder.AddNode("multi_turn", graph.NodeTypeLLM,
 func(ctx context.Context, state graph.State) (graph.State, error) {
-    
+
     // 【错误❌】为每轮创建新Agent（丢失历史）
     for each round {
         ag := createAgent()  // ❌ 新Agent，丢失历史
         ag.Run(ctx, userMsg)
     }
-    
+
     // 【正确✅】创建一个Session，在其中进行多轮对话
     sess := state["session"].(session.Session)
-    
+
     r1, _ := sess.Run(ctx, "第1轮")  // Session记录
     r2, _ := sess.Run(ctx, "第2轮")  // 保留第1轮历史
     r3, _ := sess.Run(ctx, "第3轮")  // 保留第1,2轮历史
-    
+
     // 获取完整历史（包含所有轮次）
     messages := sess.GetMessages()
     state["history"] = messages
-    
+
     return state, nil
 })
 ```
