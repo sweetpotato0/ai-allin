@@ -278,6 +278,26 @@ func main() {
 
 更多细节请查看 `docs/rag/overview.md`，并参考 `examples/rag/agentic` 运行端到端示例。若已有独立的检索系统，也可以通过 `agentic.WithRetriever(...)` 将其直接注入流水线，跳过默认的切片与索引步骤。
 
+#### 基于 Postgres + pgvector 的示例
+
+`examples/rag/postgres` 展示了如何把 Agentic RAG 流程落在 pgvector 上，并使用 OpenAI `text-embedding-3-small` 生成向量。示例会自动读取 `docs/` 目录下的所有 Markdown 文件，以及仓库根目录的 `README*.md`、`AGENTS.md`、`CLAUDE.md`，并将它们写入向量库，便于直接就文档内容提问。
+
+```bash
+# 1. 启动 pgvector（也可以改成自己的集群）
+docker run --rm -e POSTGRES_PASSWORD=postgres -p 5432:5432 ankane/pgvector
+
+# 2. 准备运行所需的环境变量
+export OPENAI_API_KEY=sk-...
+export PGVECTOR_PASSWORD=postgres
+export PGVECTOR_USER=postgres
+export PGVECTOR_DATABASE=postgres
+
+# 3. 运行示例（首次启动会自动建索引，之后复用；加 -reindex 可重建）
+go run ./examples/rag/postgres -question "AI-Allin 如何支持 MCP 协议？"
+```
+
+如需自定义连接信息，设置 `PGVECTOR_HOST`、`PGVECTOR_PORT`、`PGVECTOR_SSLMODE`、`PGVECTOR_TABLE` 等环境变量即可。
+
 ## 架构
 
 ### 核心包

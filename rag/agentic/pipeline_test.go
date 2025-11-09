@@ -135,6 +135,10 @@ func (k *keywordEmbedder) Embed(ctx context.Context, text string) ([]float32, er
 	return vec, nil
 }
 
+func (k *keywordEmbedder) Dimension() int {
+	return 1024
+}
+
 func (k *keywordEmbedder) EmbedBatch(ctx context.Context, texts []string) ([][]float32, error) {
 	out := make([][]float32, len(texts))
 	for i, text := range texts {

@@ -222,6 +222,7 @@ func (p *Pipeline) researchNode(ctx context.Context, state graph.State) (graph.S
 			return state, err
 		}
 		for _, q := range queries {
+			fmt.Printf("当前查询：%#v\n", q)
 			results, err := p.retrieval.Search(ctx, q)
 			if err != nil {
 				return state, fmt.Errorf("vector search failed: %w", err)

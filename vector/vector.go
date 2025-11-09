@@ -39,6 +39,9 @@ type Embedder interface {
 
 	// EmbedBatch converts multiple texts to embeddings
 	EmbedBatch(ctx context.Context, texts []string) ([][]float32, error)
+
+	// Dimension return number of embedding dimensions
+	Dimension() int
 }
 
 // CosineSimilarityOperator returns the PostgreSQL operator for cosine similarity

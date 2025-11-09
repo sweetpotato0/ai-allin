@@ -276,6 +276,26 @@ func main() {
 
 See `docs/rag/overview.md` for a deeper dive and `examples/rag/agentic` for a runnable demo with OpenAI plus a toy embedder. Already have a production retrieval stack? Wrap it and hand it to the pipeline via `agentic.WithRetriever(...)`.
 
+#### Postgres + pgvector sample
+
+`examples/rag/postgres` shows how to ground the Agentic RAG pipeline in a pgvector-backed store using OpenAI embeddings. It ingests every Markdown file in `docs/` plus the top-level `README*.md`, `AGENTS.md`, and `CLAUDE.md`, so the agent can answer questions straight from the repository documentation.
+
+```bash
+# 1. Start pgvector locally (or point the env vars at an existing cluster)
+docker run --rm -e POSTGRES_PASSWORD=postgres -p 5432:5432 ankane/pgvector
+
+# 2. Export credentials for the example
+export OPENAI_API_KEY=sk-...
+export PGVECTOR_PASSWORD=postgres
+export PGVECTOR_USER=postgres
+export PGVECTOR_DATABASE=postgres
+
+# 3. Run the example (indexes docs the first time, then reuses them)
+go run ./examples/rag/postgres -question "How does ai-allin integrate with MCP?"
+```
+
+Set `PGVECTOR_HOST`, `PGVECTOR_PORT`, `PGVECTOR_SSLMODE`, or `PGVECTOR_TABLE` if you need to override the defaults, and pass `-reindex` whenever you want to rebuild the embeddings from disk.
+
 If you need to rehydrate sessions from a persistent store in a new process, register an `AgentResolver` with `session.WithAgentResolver` so the manager knows how to rebuild the underlying agent prototype for any single-agent session.
 
 ## Architecture

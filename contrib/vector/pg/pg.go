@@ -35,10 +35,10 @@ type PGVectorConfig struct {
 // DefaultPGVectorConfig returns default pgvector configuration
 func DefaultPGVectorConfig() *PGVectorConfig {
 	return &PGVectorConfig{
-		Host:      "localhost",
+		Host:      "127.0.0.1",
 		Port:      5432,
 		User:      "postgres",
-		Password:  "postgres",
+		Password:  "123456",
 		DBName:    "ai_allin",
 		SSLMode:   "disable",
 		Dimension: 1536,
