@@ -20,7 +20,12 @@ func main() {
 		log.Fatal("OPENAI_API_KEY is required to run the Agentic RAG example")
 	}
 
-	llm := openai.New(openai.DefaultConfig(apiKey))
+	baseURL := os.Getenv("OPENAI_API_BASE_URL")
+	if apiKey == "" {
+		log.Fatal("OPENAI_API_KEY is required to run the Agentic RAG example")
+	}
+
+	llm := openai.New(openai.DefaultConfig().WithAPIKey(apiKey).WithBaseURL(baseURL))
 
 	// In production, replace keywordEmbedder with a proper embedding provider (OpenAI, Cohere, etc).
 	embedder := newKeywordEmbedder()

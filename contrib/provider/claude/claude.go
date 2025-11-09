@@ -21,11 +21,21 @@ type Config struct {
 	Temperature float64
 }
 
+// WithBaseURL set BaseURL.
+func (cfg *Config) WithBaseURL(url string) *Config {
+	cfg.BaseURL = url
+	return cfg
+}
+
+// WithAPIKey set api key.
+func (cfg *Config) WithAPIKey(apiKey string) *Config {
+	cfg.APIKey = apiKey
+	return cfg
+}
+
 // DefaultConfig returns default Claude configuration
-func DefaultConfig(apiKey, baseURL string) *Config {
+func DefaultConfig() *Config {
 	return &Config{
-		APIKey:      apiKey,
-		BaseURL:     baseURL,
 		Model:       "claude-3-5-sonnet-20241022",
 		MaxTokens:   4096,
 		Temperature: 0.7,

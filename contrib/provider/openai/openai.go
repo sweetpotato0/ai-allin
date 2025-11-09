@@ -15,15 +15,28 @@ import (
 // Config holds OpenAI provider configuration
 type Config struct {
 	APIKey      string
+	BaseURL     string
 	Model       string
 	MaxTokens   int64
 	Temperature float64
 }
 
+// WithBaseURL set BaseURL.
+func (cfg *Config) WithBaseURL(url string) *Config {
+	cfg.BaseURL = url
+	return cfg
+}
+
+// WithAPIKey set api key.
+func (cfg *Config) WithAPIKey(apiKey string) *Config {
+	cfg.APIKey = apiKey
+	return cfg
+}
+
 // DefaultConfig returns default OpenAI configuration
-func DefaultConfig(apiKey string) *Config {
+func DefaultConfig() *Config {
 	return &Config{
-		APIKey:      apiKey,
+		APIKey:      "",
 		Model:       "gpt-4o-mini",
 		MaxTokens:   2000,
 		Temperature: 0.7,
@@ -42,7 +55,11 @@ func New(config *Config) *Provider {
 		config.Model = "gpt-4o-mini"
 	}
 
-	client := openai.NewClient(option.WithAPIKey(config.APIKey))
+	options := []option.RequestOption{option.WithAPIKey(config.APIKey)}
+	if config.BaseURL != "" {
+		options = append(options, option.WithBaseURL(config.BaseURL))
+	}
+	client := openai.NewClient(options...)
 
 	return &Provider{
 		config: config,

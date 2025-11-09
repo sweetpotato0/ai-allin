@@ -143,7 +143,9 @@ func main() {
 			fmt.Printf("   Saved %d items: %v\n", len(data), data)
 			return state, nil
 		}).
-		AddNode("end", graph.NodeTypeEnd, nil).
+		AddNode("end", graph.NodeTypeEnd, func(ctx context.Context, state graph.State) (graph.State, error) {
+			return state, nil
+		}).
 		AddEdge("start", "transform").
 		AddEdge("transform", "filter").
 		AddEdge("filter", "save").

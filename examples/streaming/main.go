@@ -32,6 +32,7 @@ func main() {
 
 func openaiStreamingExample() {
 	apiKey := os.Getenv("OPENAI_API_KEY")
+	baseURL := os.Getenv("OPENAI_API_BASE_URL")
 	if apiKey == "" {
 		fmt.Println("⚠️  OPENAI_API_KEY not set - skipping example")
 		fmt.Println("   Set OPENAI_API_KEY environment variable to use this example")
@@ -41,7 +42,7 @@ func openaiStreamingExample() {
 	ctx := context.Background()
 
 	// Create OpenAI provider
-	config := openai.DefaultConfig(apiKey)
+	config := openai.DefaultConfig().WithAPIKey(apiKey).WithBaseURL(baseURL)
 	config.Temperature = 0.7
 	provider := openai.New(config)
 
@@ -81,7 +82,7 @@ func claudeStreamingExample() {
 	ctx := context.Background()
 
 	// Create Claude provider
-	config := claude.DefaultConfig(apiKey, os.Getenv("ANTHROPIC_BASE_URL"))
+	config := claude.DefaultConfig().WithAPIKey(apiKey).WithBaseURL(os.Getenv("ANTHROPIC_BASE_URL"))
 	config.Temperature = 0.7
 	provider := claude.New(config)
 

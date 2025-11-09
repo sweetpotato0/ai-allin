@@ -39,7 +39,7 @@ func openaiProviderExample() {
 	ctx := context.Background()
 
 	// Create OpenAI provider with default config
-	openaiConfig := openai.DefaultConfig(apiKey)
+	openaiConfig := openai.DefaultConfig().WithAPIKey(apiKey).WithBaseURL(os.Getenv("OPENAI_API_BASE_URL"))
 	openaiProvider := openai.New(openaiConfig)
 
 	// Create agent with OpenAI provider
@@ -72,7 +72,7 @@ func claudeProviderExample() {
 	ctx := context.Background()
 
 	// Create Claude provider with default config
-	claudeConfig := claude.DefaultConfig(apiKey, os.Getenv("ANTHROPIC_BASE_URL"))
+	claudeConfig := claude.DefaultConfig().WithAPIKey(apiKey).WithBaseURL(os.Getenv("ANTHROPIC_BASE_URL"))
 	claudeProvider := claude.New(claudeConfig)
 
 	// Create agent with Claude provider

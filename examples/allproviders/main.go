@@ -56,7 +56,7 @@ func openaiExample(ctx context.Context) {
 		return
 	}
 
-	config := openai.DefaultConfig(apiKey)
+	config := openai.DefaultConfig()
 	provider := openai.New(config)
 
 	ag := agent.New(
@@ -81,7 +81,7 @@ func claudeExample(ctx context.Context) {
 		return
 	}
 
-	config := claude.DefaultConfig(apiKey, os.Getenv("ANTHROPIC_BASE_URL"))
+	config := claude.DefaultConfig().WithAPIKey(apiKey).WithBaseURL(os.Getenv("ANTHROPIC_BASE_URL"))
 	provider := claude.New(config)
 
 	ag := agent.New(
