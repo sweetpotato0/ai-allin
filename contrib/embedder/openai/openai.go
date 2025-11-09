@@ -11,12 +11,14 @@ import (
 	"github.com/sweetpotato0/ai-allin/vector"
 )
 
+// OpenAIEmbedder implements vector.Embedder by using openai.
 type OpenAIEmbedder struct {
 	client    openaisdk.Client
 	model     openaisdk.EmbeddingModel
 	dimension int
 }
 
+// New create OpenAIEmbedder.
 func New(apiKey, baseURL string, model openaisdk.EmbeddingModel, dimension int) vector.Embedder {
 	opts := []option.RequestOption{option.WithAPIKey(apiKey)}
 	if strings.TrimSpace(baseURL) != "" {
@@ -30,10 +32,12 @@ func New(apiKey, baseURL string, model openaisdk.EmbeddingModel, dimension int) 
 	}
 }
 
+// Dimension return number of embedding dimensions
 func (e *OpenAIEmbedder) Dimension() int {
 	return e.dimension
 }
 
+// Embed converts text to a vector embedding
 func (e *OpenAIEmbedder) Embed(ctx context.Context, text string) ([]float32, error) {
 	vectors, err := e.embedBatch(ctx, []string{text})
 	if err != nil {
@@ -45,6 +49,7 @@ func (e *OpenAIEmbedder) Embed(ctx context.Context, text string) ([]float32, err
 	return vectors[0], nil
 }
 
+// EmbedBatch converts multiple texts to embeddings
 func (e *OpenAIEmbedder) EmbedBatch(ctx context.Context, texts []string) ([][]float32, error) {
 	return e.embedBatch(ctx, texts)
 }
