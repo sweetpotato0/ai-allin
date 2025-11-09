@@ -8,7 +8,6 @@ import (
 	"time"
 
 	_ "github.com/lib/pq"
-	cfg "github.com/sweetpotato0/ai-allin/config"
 	"github.com/sweetpotato0/ai-allin/memory"
 	"github.com/sweetpotato0/ai-allin/pkg/env"
 	errorskg "github.com/sweetpotato0/ai-allin/pkg/errors"
@@ -58,11 +57,6 @@ func NewPostgresStore(config *PostgresConfig) (*PostgresStore, error) {
 	if config == nil {
 		// Try to load from environment variables first
 		config = PostgresConfigFromEnv()
-	}
-
-	// Validate configuration
-	if err := cfg.ValidatePostgresConfig(config.Host, config.Port, config.User, config.Password, config.DBName, config.SSLMode); err != nil {
-		return nil, fmt.Errorf("invalid PostgreSQL configuration: %w", err)
 	}
 
 	// Build DSN (Data Source Name)
