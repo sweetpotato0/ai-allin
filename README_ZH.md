@@ -140,6 +140,20 @@ func main() {
 }
 ```
 
+#### 本地 MCP 演示服务
+
+`examples/mcp` 目录包含两个可运行的 MCP 服务，覆盖 HTTP（SSE）与 stdio 传输，方便端到端验证：
+
+```bash
+# HTTP 流式（两个终端）
+go run ./examples/mcp/http --host 127.0.0.1 --port 8080 --path /mcp
+go run ./examples/mcp -transport stream -endpoint http://127.0.0.1:8080/mcp -prompt "列出可用工具"
+
+# stdio（先构建，再让代理拉起二进制）
+go build -o ./bin/mcp-stdio ./examples/mcp/stdio
+go run ./examples/mcp -transport stdio -command ./bin/mcp-stdio -prompt "获取 Tokyo 天气"
+```
+
 ### Session 管理示例
 
 ```go

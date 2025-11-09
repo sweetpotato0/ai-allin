@@ -27,6 +27,12 @@ func (cfg *Config) WithBaseURL(url string) *Config {
 	return cfg
 }
 
+// WithModel set model.
+func (cfg *Config) WithModel(model string) *Config {
+	cfg.Model = model
+	return cfg
+}
+
 // WithAPIKey set api key.
 func (cfg *Config) WithAPIKey(apiKey string) *Config {
 	cfg.APIKey = apiKey

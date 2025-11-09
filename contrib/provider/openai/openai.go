@@ -33,6 +33,12 @@ func (cfg *Config) WithAPIKey(apiKey string) *Config {
 	return cfg
 }
 
+// WithModel set model.
+func (cfg *Config) WithModel(model string) *Config {
+	cfg.Model = model
+	return cfg
+}
+
 // DefaultConfig returns default OpenAI configuration
 func DefaultConfig() *Config {
 	return &Config{
@@ -78,16 +84,30 @@ func (p *Provider) Generate(ctx context.Context, messages []*message.Message, to
 		case message.RoleUser:
 			openAIMessages = append(openAIMessages, openai.UserMessage(msg.Content))
 		case message.RoleAssistant:
-			openAIMessages = append(openAIMessages, openai.AssistantMessage(msg.Content))
+			assistantMsg := openai.AssistantMessage(msg.Content)
+			if len(msg.ToolCalls) > 0 {
+				toolCalls, err := encodeToolCalls(msg.ToolCalls)
+				if err != nil {
+					return nil, fmt.Errorf("failed to encode tool calls: %w", err)
+				}
+				if assistantMsg.OfAssistant != nil {
+					assistantMsg.OfAssistant.ToolCalls = toolCalls
+				}
+			}
+			openAIMessages = append(openAIMessages, assistantMsg)
 		case message.RoleTool:
-			openAIMessages = append(openAIMessages, openai.ToolMessage(msg.ToolID, msg.Content))
+			openAIMessages = append(openAIMessages, openai.ToolMessage(msg.Content, msg.ToolID))
 		}
 	}
 
 	// Build chat completion request
+	model := p.config.Model
+	if model == "" {
+		model = string(openai.ChatModelGPT4oMini)
+	}
 	params := openai.ChatCompletionNewParams{
 		Messages: openAIMessages,
-		Model:    openai.ChatModelGPT4oMini,
+		Model:    openai.ChatModel(model),
 	}
 
 	// Set temperature if provided
@@ -181,16 +201,30 @@ func (p *Provider) GenerateStream(ctx context.Context, messages []*message.Messa
 		case message.RoleUser:
 			openAIMessages = append(openAIMessages, openai.UserMessage(msg.Content))
 		case message.RoleAssistant:
-			openAIMessages = append(openAIMessages, openai.AssistantMessage(msg.Content))
+			assistantMsg := openai.AssistantMessage(msg.Content)
+			if len(msg.ToolCalls) > 0 {
+				toolCalls, err := encodeToolCalls(msg.ToolCalls)
+				if err != nil {
+					return nil, fmt.Errorf("failed to encode tool calls: %w", err)
+				}
+				if assistantMsg.OfAssistant != nil {
+					assistantMsg.OfAssistant.ToolCalls = toolCalls
+				}
+			}
+			openAIMessages = append(openAIMessages, assistantMsg)
 		case message.RoleTool:
-			openAIMessages = append(openAIMessages, openai.ToolMessage(msg.ToolID, msg.Content))
+			openAIMessages = append(openAIMessages, openai.ToolMessage(msg.Content, msg.ToolID))
 		}
 	}
 
 	// Build chat completion request with streaming
+	model := p.config.Model
+	if model == "" {
+		model = string(openai.ChatModelGPT4oMini)
+	}
 	params := openai.ChatCompletionNewParams{
 		Messages: openAIMessages,
-		Model:    openai.ChatModelGPT4oMini,
+		Model:    openai.ChatModel(model),
 	}
 
 	// Set temperature if provided
@@ -285,4 +319,29 @@ func (p *Provider) GenerateStream(ctx context.Context, messages []*message.Messa
 	}
 
 	return responseMsg, nil
+}
+
+func encodeToolCalls(calls []message.ToolCall) ([]openai.ChatCompletionMessageToolCallParam, error) {
+	if len(calls) == 0 {
+		return nil, nil
+	}
+	params := make([]openai.ChatCompletionMessageToolCallParam, 0, len(calls))
+	for _, tc := range calls {
+		args := tc.Args
+		if args == nil {
+			args = make(map[string]any)
+		}
+		raw, err := json.Marshal(args)
+		if err != nil {
+			return nil, err
+		}
+		params = append(params, openai.ChatCompletionMessageToolCallParam{
+			ID: tc.ID,
+			Function: openai.ChatCompletionMessageToolCallFunctionParam{
+				Name:      tc.Name,
+				Arguments: string(raw),
+			},
+		})
+	}
+	return params, nil
 }

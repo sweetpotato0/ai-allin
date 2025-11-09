@@ -140,6 +140,20 @@ func main() {
 }
 ```
 
+#### Local MCP demo servers
+
+Two runnable MCP servers live in `examples/mcp` so you can exercise both transports end-to-end:
+
+```bash
+# Streamable HTTP (Terminal 1 + 2)
+go run ./examples/mcp/http --host 127.0.0.1 --port 8080 --path /mcp
+go run ./examples/mcp -transport stream -endpoint http://127.0.0.1:8080/mcp -prompt "List the available tools."
+
+# Stdio (build once, then point the agent at the binary)
+go build -o ./bin/mcp-stdio ./examples/mcp/stdio
+go run ./examples/mcp -transport stdio -command ./bin/mcp-stdio -prompt "Get the weather in Tokyo."
+```
+
 ### Session Management
 
 ```go

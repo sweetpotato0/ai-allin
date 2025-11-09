@@ -5,9 +5,11 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"os"
 	"strings"
 
 	"github.com/sweetpotato0/ai-allin/agent"
+	"github.com/sweetpotato0/ai-allin/contrib/provider/openai"
 	frameworkmcp "github.com/sweetpotato0/ai-allin/tool/mcp"
 )
 
@@ -55,9 +57,21 @@ func main() {
 		fmt.Println("No tools were returned by the MCP server.")
 	}
 
+	apiKey := os.Getenv("OPENAI_API_KEY")
+	if apiKey == "" {
+		log.Fatal("OPENAI_API_KEY is required to run the Agentic RAG example")
+	}
+
+	baseURL := os.Getenv("OPENAI_API_BASE_URL")
+	if apiKey == "" {
+		log.Fatal("OPENAI_API_KEY is required to run the Agentic RAG example")
+	}
+	llm := openai.New(openai.DefaultConfig().WithAPIKey(apiKey).WithBaseURL(baseURL).WithModel("gpt-4o"))
+
 	ag := agent.New(
 		agent.WithName("mcp-agent"),
 		agent.WithSystemPrompt("You are a helpful assistant that can call MCP tools when needed."),
+		agent.WithProvider(llm),
 		agent.WithToolProvider(provider),
 	)
 
