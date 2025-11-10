@@ -59,9 +59,7 @@ func New(store vector.VectorStore, emb embedder.Embedder, chunker chunking.Chunk
 		RerankTopK: 4,
 	}
 	for _, opt := range opts {
-		if opt != nil {
-			opt(&cfg)
-		}
+		opt(&cfg)
 	}
 	return &Retriever{
 		store:     store,

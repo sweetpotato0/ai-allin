@@ -73,9 +73,7 @@ func NewSimpleChunker(opts ...Option) *SimpleChunker {
 		IncludeMeta: true,
 	}
 	for _, opt := range opts {
-		if opt != nil {
-			opt(cfg)
-		}
+		opt(cfg)
 	}
 	return &SimpleChunker{
 		size:    cfg.ChunkSize,

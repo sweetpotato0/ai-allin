@@ -179,9 +179,6 @@ func applyOptions(cfg *Config, opts []Option) *Config {
 		cfg = defaultConfig()
 	}
 	for _, opt := range opts {
-		if opt == nil {
-			continue
-		}
 		opt(cfg)
 	}
 	return cfg

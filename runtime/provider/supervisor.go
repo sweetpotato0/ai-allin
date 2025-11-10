@@ -39,9 +39,6 @@ func NewToolSupervisor(registry *tool.Registry, opts ...Option) *ToolSupervisor 
 		watchers: make(map[tool.Provider]context.CancelFunc),
 	}
 	for _, opt := range opts {
-		if opt == nil {
-			continue
-		}
 		opt(s)
 	}
 	return s

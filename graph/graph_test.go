@@ -2,6 +2,7 @@ package graph
 
 import (
 	"context"
+	"fmt"
 	"testing"
 )
 
@@ -174,7 +175,7 @@ func TestExecuteSimpleLinearGraph(t *testing.T) {
 			state["started"] = true
 			return state, nil
 		},
-		Next: "node1",
+		NextNodes: []string{"node1"},
 	}
 
 	node1 := &Node{
@@ -184,7 +185,7 @@ func TestExecuteSimpleLinearGraph(t *testing.T) {
 			state["step1"] = true
 			return state, nil
 		},
-		Next: "node2",
+		NextNodes: []string{"node2"},
 	}
 
 	node2 := &Node{
@@ -194,7 +195,7 @@ func TestExecuteSimpleLinearGraph(t *testing.T) {
 			state["step2"] = true
 			return state, nil
 		},
-		Next: "end",
+		NextNodes: []string{"end"},
 	}
 
 	endNode := &Node{
@@ -239,7 +240,7 @@ func TestExecuteWithCondition(t *testing.T) {
 			state["value"] = 5
 			return state, nil
 		},
-		Next: "decision",
+		NextNodes: []string{"decision"},
 	}
 
 	decisionNode := &Node{
@@ -268,7 +269,7 @@ func TestExecuteWithCondition(t *testing.T) {
 			state["branch"] = "high"
 			return state, nil
 		},
-		Next: "end",
+		NextNodes: []string{"end"},
 	}
 
 	nodeLow := &Node{
@@ -278,7 +279,7 @@ func TestExecuteWithCondition(t *testing.T) {
 			state["branch"] = "low"
 			return state, nil
 		},
-		Next: "end",
+		NextNodes: []string{"end"},
 	}
 
 	endNode := &Node{
@@ -306,6 +307,132 @@ func TestExecuteWithCondition(t *testing.T) {
 	}
 }
 
+func TestExecuteParallelJoin(t *testing.T) {
+	builder := NewBuilder().
+		AddNode("start", NodeTypeStart, func(ctx context.Context, state State) (State, error) {
+			state["a"] = false
+			state["b"] = false
+			return state, nil
+		}).
+		AddNode("fanout", NodeTypeCustom, func(ctx context.Context, state State) (State, error) {
+			return state, nil
+		}).
+		AddNode("worker_a", NodeTypeCustom, func(ctx context.Context, state State) (State, error) {
+			state["a"] = true
+			return state, nil
+		}).
+		AddNode("worker_b", NodeTypeCustom, func(ctx context.Context, state State) (State, error) {
+			state["b"] = true
+			return state, nil
+		}).
+		AddNode("join", NodeTypeCustom, func(ctx context.Context, state State) (State, error) {
+			if state["a"] != true || state["b"] != true {
+				return state, fmt.Errorf("join executed before all parents finished")
+			}
+			state["joined"] = true
+			return state, nil
+		}).
+		AddNode("end", NodeTypeEnd, func(ctx context.Context, state State) (State, error) {
+			return state, nil
+		}).
+		AddEdge("start", "fanout").
+		AddEdge("fanout", "worker_a").
+		AddEdge("fanout", "worker_b").
+		AddEdge("worker_a", "join").
+		AddEdge("worker_b", "join").
+		AddEdge("join", "end").
+		SetStart("start").
+		SetEnd("end").
+		RequireAllParents("join")
+
+	g := builder.Build()
+
+	state, err := g.Execute(context.Background(), make(State))
+	if err != nil {
+		t.Fatalf("Graph execution failed: %v", err)
+	}
+
+	if state["joined"] != true {
+		t.Fatalf("Expected join node to run after both parents")
+	}
+}
+
+func TestExecuteJoinWithOptionalConditionParent(t *testing.T) {
+	cases := []struct {
+		name         string
+		conditionHit bool
+		result       string
+	}{
+		{name: "skip", conditionHit: false, result: "skip"},
+		{name: "join", conditionHit: true, result: "join"},
+	}
+
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			builder := NewBuilder().
+				AddNode("start", NodeTypeStart, func(ctx context.Context, state State) (State, error) {
+					state["worker"] = false
+					state["cond"] = false
+					return state, nil
+				}).
+				AddNode("worker", NodeTypeCustom, func(ctx context.Context, state State) (State, error) {
+					state["worker"] = true
+					return state, nil
+				}).
+				AddConditionNode("cond", func(ctx context.Context, state State) (string, error) {
+					if tc.result == "join" {
+						state["cond"] = true
+						return "join", nil
+					}
+					state["cond"] = false
+					return "skip", nil
+				}, map[string]string{
+					"join": "join",
+					"skip": "end",
+				}).
+				AddNode("join", NodeTypeCustom, func(ctx context.Context, state State) (State, error) {
+					if state["worker"] != true {
+						return state, fmt.Errorf("worker result missing")
+					}
+					if tc.conditionHit && state["cond"] != true {
+						return state, fmt.Errorf("condition branch missing")
+					}
+					state["joined"] = true
+					return state, nil
+				}).
+				AddNode("end", NodeTypeEnd, func(ctx context.Context, state State) (State, error) {
+					return state, nil
+				}).
+				AddEdge("start", "worker").
+				AddEdge("start", "cond").
+				AddEdge("worker", "join").
+				AddEdge("join", "end").
+				SetStart("start").
+				SetEnd("end").
+				RequireAllParents("join").
+				RequireAllParents("end")
+
+			g := builder.Build()
+
+			state, err := g.Execute(context.Background(), make(State))
+			if err != nil {
+				t.Fatalf("Graph execution failed: %v", err)
+			}
+
+			if state["joined"] != true {
+				t.Fatalf("join node did not execute")
+			}
+			if tc.conditionHit && state["cond"] != true {
+				t.Fatalf("expected condition branch to participate")
+			}
+			if !tc.conditionHit && state["cond"] != false {
+				t.Fatalf("condition branch should be skipped")
+			}
+		})
+	}
+}
+
 func TestExecuteNoStartNode(t *testing.T) {
 	g := NewGraph()
 
@@ -327,7 +454,7 @@ func TestExecuteNodeNotFound(t *testing.T) {
 		Execute: func(ctx context.Context, state State) (State, error) {
 			return state, nil
 		},
-		Next: "nonexistent",
+		NextNodes: []string{"nonexistent"},
 	}
 
 	g.AddNode(startNode)
@@ -348,7 +475,7 @@ func TestExecuteInfiniteLoop(t *testing.T) {
 		Execute: func(ctx context.Context, state State) (State, error) {
 			return state, nil
 		},
-		Next: "node1",
+		NextNodes: []string{"node1"},
 	}
 
 	node1 := &Node{
@@ -357,7 +484,7 @@ func TestExecuteInfiniteLoop(t *testing.T) {
 		Execute: func(ctx context.Context, state State) (State, error) {
 			return state, nil
 		},
-		Next: "start",
+		NextNodes: []string{"start"},
 	}
 
 	g.AddNode(startNode)
@@ -379,7 +506,7 @@ func TestExecuteWithInitialState(t *testing.T) {
 			state["processed"] = true
 			return state, nil
 		},
-		Next: "end",
+		NextNodes: []string{"end"},
 	}
 
 	endNode := &Node{
