@@ -109,10 +109,20 @@ func main() {
 - **Retrieval depth** – `agentic.WithTopK(k)` / `agentic.WithRerankTopK(k)` control search fan-out and reranker cutoffs.
 - **Chunking & reranking** – swap in `agentic.WithChunker(...)` or `agentic.WithReranker(...)` to control how data is prepared and scored.
 - **Bring your own retriever** – inject any retrieval implementation (hybrid search, external service, etc.) via `agentic.WithRetriever(...)`.
+- **Retrieval presets** – call `agentic.WithRetrievalPreset(agentic.RetrievalPresetSimple|Balanced|Hybrid)` to flip multiple tuning knobs at once instead of setting every field manually.
 - **Prompts** – override planner/query/writer/critic prompts with `WithPlannerPrompt`, `WithQueryPrompt`, `WithSynthesisPrompt`, and `WithCriticPrompt`.
 - **Answer safety** – demand supporting evidence with `WithMinEvidenceCount(n)` and customise the fallback `WithNoAnswerMessage(...)` so the writer refuses to answer when nothing relevant was found.
 - **Critic agent** – disable it via `WithCritic(false)` or supply a different LLM client through `Clients.Critic`.
 - **Graph extensions** – the underlying `graph.Graph` is stored on the pipeline; you can fork the package or wrap the pipeline to inject extra nodes (tool calls, structured logging, telemetry, etc.).
+
+### Production-grade components
+
+The `contrib/` tree now ships ready-to-use upgrades:
+
+- `contrib/chunking/markdown` keeps headings with their body text and tags section metadata, while `contrib/chunking/token` enforces token-aware windows compatible with LLM limits.
+- `contrib/reranker/mmr` removes duplicate evidence via Max Marginal Relevance, and `contrib/reranker/cohere` calls Cohere’s hosted ReRank API with automatic local fallback.
+- `contrib/retrieval/hybrid` merges semantic vectors with a lightweight BM25 index so lexical matches (dates, identifiers) survive, and can be injected via `agentic.WithRetriever`.
+- `examples/rag/production` demonstrates wiring these pieces together; point it at real LLM/embedding providers for a production-like stack.
 
 ## Observability
 

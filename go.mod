@@ -6,6 +6,7 @@ toolchain go1.24.10
 
 require (
 	github.com/anthropics/anthropic-sdk-go v1.16.0
+	github.com/yuin/goldmark v1.4.13
 	github.com/lib/pq v1.10.9
 	github.com/modelcontextprotocol/go-sdk v1.1.0
 	github.com/openai/openai-go v1.12.0

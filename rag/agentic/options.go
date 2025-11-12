@@ -40,6 +40,18 @@ type Config struct {
 	retrieval RetrievalEngine   // Optional override for the entire retrieval engine
 }
 
+// RetrievalPreset bundles commonly used retrieval settings.
+type RetrievalPreset string
+
+const (
+	// RetrievalPresetSimple favours speed and disables hybrid search.
+	RetrievalPresetSimple RetrievalPreset = "simple"
+	// RetrievalPresetBalanced provides a middle ground between recall and latency.
+	RetrievalPresetBalanced RetrievalPreset = "balanced"
+	// RetrievalPresetHybrid maximises recall by enabling hybrid search and vector normalisation.
+	RetrievalPresetHybrid RetrievalPreset = "hybrid"
+)
+
 // Option customises the pipeline configuration.
 type Option func(*Config)
 
@@ -49,6 +61,38 @@ func WithTopK(k int) Option {
 	return func(cfg *Config) {
 		if k > 0 {
 			cfg.TopK = k
+		}
+	}
+}
+
+// WithRetrievalPreset applies a predefined bundle of retrieval settings instead of toggling knobs one by one.
+func WithRetrievalPreset(preset RetrievalPreset) Option {
+	return func(cfg *Config) {
+		switch preset {
+		case RetrievalPresetSimple:
+			cfg.TopK = 3
+			cfg.RerankTopK = 3
+			cfg.MinSearchScore = 0
+			cfg.EnableHybridSearch = false
+			cfg.HybridTopK = 0
+			cfg.TitleScorePenalty = 0.9
+			cfg.NormalizeEmbeddings = false
+		case RetrievalPresetBalanced:
+			cfg.TopK = 6
+			cfg.RerankTopK = 4
+			cfg.MinSearchScore = 0.15
+			cfg.EnableHybridSearch = false
+			cfg.HybridTopK = 0
+			cfg.TitleScorePenalty = 0.9
+			cfg.NormalizeEmbeddings = true
+		case RetrievalPresetHybrid:
+			cfg.TopK = 8
+			cfg.RerankTopK = 6
+			cfg.MinSearchScore = 0.25
+			cfg.EnableHybridSearch = true
+			cfg.HybridTopK = 6
+			cfg.TitleScorePenalty = 0.85
+			cfg.NormalizeEmbeddings = true
 		}
 	}
 }
@@ -246,29 +290,24 @@ func WithGraphMaxVisits(max int) Option {
 }
 
 func defaultConfig() *Config {
-	return &Config{
-		Name:                "agentic-rag",
-		TopK:                6,
-		RerankTopK:          6,
-		MaxPlanSteps:        4,
-		EnableCritic:        true,
-		GraphMaxVisits:      20,
-		MinEvidenceCount:    1,
-		MinSearchScore:      0.2,
-		EnableHybridSearch:  true,
-		HybridTopK:          5,
-		TitleScorePenalty:   0.85,
-		NormalizeEmbeddings: true,
-		ChunkSize:           800,
-		ChunkOverlap:        120,
-		ChunkMinSize:        200,
-		ChunkSeparator:      "\n\n",
-		PlannerPrompt:       "You are a senior research planner. Break down complex user questions into at most {{max_steps}} ordered steps. Output strict JSON {\"strategy\": string, \"steps\": [{\"id\": \"step-1\", \"goal\": \"...\", \"questions\": [\"...\"], \"expected_evidence\": \"...\"}]}. Each step must be actionable and cite the signals it needs. if question is chinese, always use chinese.",
-		QueryPrompt:         "You are a search strategist. For the provided plan step craft up to 2 short search queries or keywords. Return JSON {\"queries\": [\"...\"]}. Keep queries specific to the step goal. if question is chinese, always use chinese.",
-		SynthesisPrompt:     "You are a staff research writer. Using only the supplied evidence, answer the question. Cite documents using [doc-id] format. Output helpful, structured text. if question is chinese, always use chinese.",
-		CriticPrompt:        "You are a meticulous reviewer. Check whether the draft answer follows the plan and uses evidence. Return JSON {\"verdict\": \"approve|revise\", \"issues\": [], \"notes\": \"\", \"final_answer\": \"...\"}. If verdict=approve keep final_answer equal to the draft. if question is chinese, always use chinese.",
-		NoAnswerMessage:     "抱歉，我没有在知识库中找到与该问题相关的答案，请提供更多上下文或重新描述问题。",
+	cfg := &Config{
+		Name:             "agentic-rag",
+		MaxPlanSteps:     4,
+		EnableCritic:     true,
+		GraphMaxVisits:   20,
+		MinEvidenceCount: 1,
+		ChunkSize:        800,
+		ChunkOverlap:     120,
+		ChunkMinSize:     200,
+		ChunkSeparator:   "\n\n",
+		PlannerPrompt:    "You are a senior research planner. Break down complex user questions into at most {{max_steps}} ordered steps. Output strict JSON {\"strategy\": string, \"steps\": [{\"id\": \"step-1\", \"goal\": \"...\", \"questions\": [\"...\"], \"expected_evidence\": \"...\"}]}. Each step must be actionable and cite the signals it needs. if question is chinese, always use chinese.",
+		QueryPrompt:      "You are a search strategist. For the provided plan step craft up to 2 short search queries or keywords. Return JSON {\"queries\": [\"...\"]}. Keep queries specific to the step goal. if question is chinese, always use chinese.",
+		SynthesisPrompt:  "You are a staff research writer. Using only the supplied evidence, answer the question. Cite documents using [doc-id] format. Output helpful, structured text. if question is chinese, always use chinese.",
+		CriticPrompt:     "You are a meticulous reviewer. Check whether the draft answer follows the plan and uses evidence. Return JSON {\"verdict\": \"approve|revise\", \"issues\": [], \"notes\": \"\", \"final_answer\": \"...\"}. If verdict=approve keep final_answer equal to the draft. if question is chinese, always use chinese.",
+		NoAnswerMessage:  "抱歉，我没有在知识库中找到与该问题相关的答案，请提供更多上下文或重新描述问题。",
 	}
+	WithRetrievalPreset(RetrievalPresetHybrid)(cfg)
+	return cfg
 }
 
 func applyOptions(cfg *Config, opts []Option) *Config {

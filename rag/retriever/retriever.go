@@ -147,7 +147,8 @@ func (r *Retriever) Search(ctx context.Context, query string) ([]reranker.Result
 		return output, nil
 	}
 
-	reranked, err := r.reranker.Rank(ctx, queryVec, candidates)
+	ctxWithQuery := reranker.ContextWithQuery(ctx, query)
+	reranked, err := r.reranker.Rank(ctxWithQuery, queryVec, candidates)
 	if err != nil {
 		return nil, err
 	}

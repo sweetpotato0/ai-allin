@@ -111,8 +111,18 @@ func main() {
 - **自带检索器**：若已有自研搜索服务，可借助 `agentic.WithRetriever(...)` 直接注入，跳过默认的 chunk/embed 流程。
 - **提示词**：用 `WithPlannerPrompt` / `WithQueryPrompt` / `WithSynthesisPrompt` / `WithCriticPrompt` 覆盖各角色的系统提示。
 - **回答兜底**：通过 `WithMinEvidenceCount(n)` 限制必须在有足够证据时才执行，并使用 `WithNoAnswerMessage(...)` 自定义无结果提示，阻止模型在没有依据时胡乱作答。
+- **配置预设**：利用 `agentic.WithRetrievalPreset(agentic.RetrievalPresetSimple|Balanced|Hybrid)` 一次性套用多组检索参数，避免手动逐个调选项。
 - **审稿智能体**：通过 `WithCritic(false)` 关闭，或给 `Clients.Critic` 指定不同模型。
 - **图扩展**：底层 `graph.Graph` 可随意扩展节点，用于插入工具调用、链路追踪、遥测等逻辑。
+
+### 生产级组件
+
+`contrib/` 目录新增了一批可以直接用于生产环境的实现：
+
+- `contrib/chunking/markdown` 识别 Markdown 标题并附带 section 元数据，`contrib/chunking/token` 则按近似 token 窗口切片，便于与 LLM 上限对齐。
+- `contrib/reranker/mmr` 通过最大边际相关性去重证据，`contrib/reranker/cohere` 可直接调用 Cohere ReRank API，并在 API 不可用时自动回退到本地策略。
+- `contrib/retrieval/hybrid` 将向量语义检索与轻量 BM25 索引融合，让关键词匹配与语义匹配同时生效，可通过 `agentic.WithRetriever` 注入。
+- `examples/rag/production` 展示了如何组合上述组件，替换示例 LLM/Embedding 即可搭建生产级混合检索流水线。
 
 ## 可观测性
 
