@@ -3,6 +3,9 @@ package agentic
 import (
 	"context"
 	"fmt"
+	"sort"
+	"strings"
+	"sync"
 
 	"github.com/sweetpotato0/ai-allin/rag/chunking"
 	"github.com/sweetpotato0/ai-allin/rag/document"
@@ -29,13 +32,19 @@ type RetrievalEngine interface {
 	Count(ctx context.Context) (int, error)
 }
 
-// defaultRetrieval is a thin adapter around rag/retriever that satisfies RetrievalEngine.
+// defaultRetrieval composes semantic + keyword retrieval strategies.
 type defaultRetrieval struct {
-	base *retriever.Retriever
+	base     *retriever.Retriever
+	cfg      *Config
+	keywords *keywordIndex
 }
 
 func (d *defaultRetrieval) IndexDocuments(ctx context.Context, docs ...document.Document) error {
-	return d.base.IndexDocuments(ctx, docs...)
+	if err := d.base.IndexDocuments(ctx, docs...); err != nil {
+		return err
+	}
+	d.keywords.add(docs...)
+	return nil
 }
 
 func (d *defaultRetrieval) Search(ctx context.Context, query string) ([]RetrievalResult, error) {
@@ -44,11 +53,25 @@ func (d *defaultRetrieval) Search(ctx context.Context, query string) ([]Retrieva
 		return nil, err
 	}
 	out := make([]RetrievalResult, 0, len(results))
+	seen := make(map[string]struct{}, len(results))
 	for _, res := range results {
+		score := d.adjustScore(res.Chunk, res.Score)
+		if score < d.cfg.MinSearchScore {
+			continue
+		}
+		seen[res.Chunk.ID] = struct{}{}
 		out = append(out, RetrievalResult{
 			Chunk: res.Chunk,
-			Score: res.Score,
+			Score: score,
 		})
+	}
+	target := d.cfg.RerankTopK
+	if d.cfg.HybridTopK > 0 {
+		target = d.cfg.HybridTopK
+	}
+	if d.cfg.EnableHybridSearch && len(out) < target {
+		extras := d.keywords.search(query, target-len(out), seen)
+		out = append(out, extras...)
 	}
 	return out, nil
 }
@@ -58,11 +81,29 @@ func (d *defaultRetrieval) Document(id string) (document.Document, bool) {
 }
 
 func (d *defaultRetrieval) Clear(ctx context.Context) error {
-	return d.base.Clear(ctx)
+	if err := d.base.Clear(ctx); err != nil {
+		return err
+	}
+	d.keywords.reset()
+	return nil
 }
 
 func (d *defaultRetrieval) Count(ctx context.Context) (int, error) {
 	return d.base.Count(ctx)
+}
+
+func (d *defaultRetrieval) adjustScore(chunk document.Chunk, score float32) float32 {
+	if d.cfg == nil {
+		return score
+	}
+	if d.cfg.TitleScorePenalty > 0 && d.cfg.TitleScorePenalty < 1 {
+		if section, ok := chunk.Metadata["section"]; ok {
+			if str, ok := section.(string); ok && str == "title" {
+				return score * d.cfg.TitleScorePenalty
+			}
+		}
+	}
+	return score
 }
 
 func newDefaultRetrievalEngine(vec vector.VectorStore, emb vector.Embedder, cfg *Config) (RetrievalEngine, error) {
@@ -84,9 +125,20 @@ func newDefaultRetrievalEngine(vec vector.VectorStore, emb vector.Embedder, cfg 
 
 	chunker := cfg.chunker
 	if chunker == nil {
+		separator := cfg.ChunkSeparator
+		if strings.TrimSpace(separator) == "" {
+			separator = "\n\n"
+		}
+		minSize := cfg.ChunkMinSize
+		if minSize < 0 {
+			minSize = 0
+		}
 		chunker = chunking.NewSimpleChunker(
 			chunking.WithChunkSize(chunkSize),
 			chunking.WithOverlap(overlap),
+			chunking.WithSeparator(separator),
+			chunking.WithMinChunkSize(minSize),
+			chunking.WithSectionTagging(true),
 		)
 	}
 
@@ -95,7 +147,7 @@ func newDefaultRetrievalEngine(vec vector.VectorStore, emb vector.Embedder, cfg 
 		rer = reranker.NewCosineReranker()
 	}
 
-	adapter := embedder.NewVectorAdapter(emb)
+	adapter := embedder.NewVectorAdapterWithNormalization(emb, cfg.NormalizeEmbeddings)
 	base := retriever.New(
 		vec,
 		adapter,
@@ -104,5 +156,143 @@ func newDefaultRetrievalEngine(vec vector.VectorStore, emb vector.Embedder, cfg 
 		retriever.WithSearchTopK(cfg.TopK),
 		retriever.WithRerankTopK(cfg.RerankTopK),
 	)
-	return &defaultRetrieval{base: base}, nil
+	return &defaultRetrieval{
+		base:     base,
+		cfg:      cfg,
+		keywords: newKeywordIndex(),
+	}, nil
+}
+
+type keywordIndex struct {
+	mu   sync.RWMutex
+	docs map[string]document.Document
+}
+
+func newKeywordIndex() *keywordIndex {
+	return &keywordIndex{
+		docs: make(map[string]document.Document),
+	}
+}
+
+func (k *keywordIndex) add(docs ...document.Document) {
+	if k == nil {
+		return
+	}
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	for _, doc := range docs {
+		if strings.TrimSpace(doc.Content) == "" || doc.ID == "" {
+			continue
+		}
+		k.docs[doc.ID] = doc.Clone()
+	}
+}
+
+func (k *keywordIndex) reset() {
+	if k == nil {
+		return
+	}
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	k.docs = make(map[string]document.Document)
+}
+
+func (k *keywordIndex) search(query string, limit int, seen map[string]struct{}) []RetrievalResult {
+	if k == nil || limit <= 0 {
+		return nil
+	}
+	tokens := tokenize(query)
+	if len(tokens) == 0 {
+		return nil
+	}
+	k.mu.RLock()
+	defer k.mu.RUnlock()
+	type candidate struct {
+		doc   document.Document
+		score float32
+	}
+	matches := make([]candidate, 0, len(k.docs))
+	for _, doc := range k.docs {
+		lower := strings.ToLower(doc.Content)
+		var hits int
+		for _, token := range tokens {
+			if strings.Contains(lower, token) {
+				hits++
+			}
+		}
+		if hits == 0 {
+			continue
+		}
+		score := float32(hits) / float32(len(tokens))
+		matches = append(matches, candidate{doc: doc.Clone(), score: score})
+	}
+	sort.Slice(matches, func(i, j int) bool {
+		return matches[i].score > matches[j].score
+	})
+	results := make([]RetrievalResult, 0, limit)
+	for _, match := range matches {
+		if len(results) >= limit {
+			break
+		}
+		chunk := keywordChunk(match.doc, seen)
+		if chunk.ID == "" {
+			continue
+		}
+		if _, exists := seen[chunk.ID]; exists {
+			continue
+		}
+		seen[chunk.ID] = struct{}{}
+		results = append(results, RetrievalResult{
+			Chunk: chunk,
+			Score: match.score,
+		})
+	}
+	return results
+}
+
+func tokenize(query string) []string {
+	lower := strings.ToLower(query)
+	raw := strings.Fields(lower)
+	dedup := make([]string, 0, len(raw))
+	seen := make(map[string]struct{}, len(raw))
+	for _, token := range raw {
+		token = strings.TrimSpace(token)
+		if token == "" {
+			continue
+		}
+		if _, ok := seen[token]; ok {
+			continue
+		}
+		seen[token] = struct{}{}
+		dedup = append(dedup, token)
+	}
+	return dedup
+}
+
+func keywordChunk(doc document.Document, seen map[string]struct{}) document.Chunk {
+	if doc.ID == "" {
+		return document.Chunk{}
+	}
+	id := doc.ID + "_kw"
+	if seen != nil {
+		if _, exists := seen[id]; exists {
+			return document.Chunk{}
+		}
+	}
+	content := strings.TrimSpace(doc.Content)
+	if len([]rune(content)) > 480 {
+		content = string([]rune(content)[:480])
+	}
+	chunk := document.Chunk{
+		ID:         id,
+		DocumentID: doc.ID,
+		Content:    content,
+		Metadata:   cloneMetadata(doc.Metadata),
+	}
+	if chunk.Metadata == nil {
+		chunk.Metadata = make(map[string]any)
+	}
+	chunk.Metadata["section"] = "body"
+	chunk.Metadata["retrieval"] = "keyword"
+	return chunk
 }

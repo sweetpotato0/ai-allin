@@ -2,6 +2,7 @@ package vector
 
 import (
 	"context"
+	"math"
 )
 
 // Embedding represents a vector embedding
@@ -92,4 +93,23 @@ func EuclideanDistance(a, b []float32) float32 {
 		y = (y + x/y) / 2
 	}
 	return y
+}
+
+// Normalize scales the vector to unit length (L2 norm).
+func Normalize(vec []float32) []float32 {
+	if len(vec) == 0 {
+		return vec
+	}
+	var sum float64
+	for _, v := range vec {
+		sum += float64(v) * float64(v)
+	}
+	if sum == 0 {
+		return vec
+	}
+	inv := float32(1 / math.Sqrt(sum))
+	for i := range vec {
+		vec[i] *= inv
+	}
+	return vec
 }

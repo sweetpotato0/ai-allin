@@ -11,13 +11,18 @@ import (
 // It intentionally groups prompt/middleware knobs and low-level retrieval parameters
 // so callers can construct reproducible agents from a single struct.
 type Config struct {
-	Name             string // Logical name for tracing/logging
-	TopK             int    // How many neighbors to pull from the vector store
-	RerankTopK       int    // How many results survive reranking
-	MaxPlanSteps     int    // Upper bound for planner emitted steps
-	EnableCritic     bool   // Toggle critic agent execution
-	GraphMaxVisits   int    // Safety guard for graph execution
-	MinEvidenceCount int    // Minimum evidence items required before synthesis runs
+	Name                string // Logical name for tracing/logging
+	TopK                int    // How many neighbors to pull from the vector store
+	RerankTopK          int    // How many results survive reranking
+	MaxPlanSteps        int    // Upper bound for planner emitted steps
+	EnableCritic        bool   // Toggle critic agent execution
+	GraphMaxVisits      int    // Safety guard for graph execution
+	MinEvidenceCount    int    // Minimum evidence items required before synthesis runs
+	MinSearchScore      float32
+	EnableHybridSearch  bool
+	HybridTopK          int
+	TitleScorePenalty   float32
+	NormalizeEmbeddings bool
 
 	PlannerPrompt   string // Custom system prompt for planner agent
 	QueryPrompt     string // System prompt for researcher/query agent
@@ -25,8 +30,10 @@ type Config struct {
 	CriticPrompt    string // System prompt for critic agent
 	NoAnswerMessage string // Message emitted when evidence is insufficient
 
-	ChunkSize    int // Desired chunk size used by default chunker
-	ChunkOverlap int // Overlap between consecutive chunks
+	ChunkSize      int    // Desired chunk size used by default chunker
+	ChunkOverlap   int    // Overlap between consecutive chunks
+	ChunkMinSize   int    // Merge short chunks until reaching this size
+	ChunkSeparator string // Custom separator passed to chunker
 
 	chunker   chunking.Chunker  // Optional override for chunking strategy
 	reranker  reranker.Reranker // Optional override for reranking stage
@@ -68,6 +75,47 @@ func WithMinEvidenceCount(count int) Option {
 		if count >= 0 {
 			cfg.MinEvidenceCount = count
 		}
+	}
+}
+
+// WithMinSearchScore filters retrieval results below the provided score.
+func WithMinSearchScore(score float32) Option {
+	return func(cfg *Config) {
+		if score >= 0 {
+			cfg.MinSearchScore = score
+		}
+	}
+}
+
+// WithHybridSearch toggles the keyword fallback search.
+func WithHybridSearch(enabled bool) Option {
+	return func(cfg *Config) {
+		cfg.EnableHybridSearch = enabled
+	}
+}
+
+// WithHybridTopK caps how many fallback keyword hits to merge.
+func WithHybridTopK(k int) Option {
+	return func(cfg *Config) {
+		if k > 0 {
+			cfg.HybridTopK = k
+		}
+	}
+}
+
+// WithTitleScorePenalty reduces the score of title chunks to favor body text.
+func WithTitleScorePenalty(p float32) Option {
+	return func(cfg *Config) {
+		if p > 0 && p <= 1 {
+			cfg.TitleScorePenalty = p
+		}
+	}
+}
+
+// WithNormalizeEmbeddings enforces L2-normalisation before vector storage.
+func WithNormalizeEmbeddings(enabled bool) Option {
+	return func(cfg *Config) {
+		cfg.NormalizeEmbeddings = enabled
 	}
 }
 
@@ -143,6 +191,24 @@ func WithChunkOverlap(overlap int) Option {
 	}
 }
 
+// WithChunkSeparator overrides the logical separator used by the default chunker.
+func WithChunkSeparator(sep string) Option {
+	return func(cfg *Config) {
+		if strings.TrimSpace(sep) != "" {
+			cfg.ChunkSeparator = sep
+		}
+	}
+}
+
+// WithChunkMinSize enforces a lower bound on chunk length before emitting.
+func WithChunkMinSize(size int) Option {
+	return func(cfg *Config) {
+		if size > 0 {
+			cfg.ChunkMinSize = size
+		}
+	}
+}
+
 // WithChunker plugs in a custom chunker implementation.
 func WithChunker(ch chunking.Chunker) Option {
 	return func(cfg *Config) {
@@ -181,20 +247,27 @@ func WithGraphMaxVisits(max int) Option {
 
 func defaultConfig() *Config {
 	return &Config{
-		Name:             "agentic-rag",
-		TopK:             3,
-		RerankTopK:       4,
-		MaxPlanSteps:     4,
-		EnableCritic:     true,
-		GraphMaxVisits:   20,
-		MinEvidenceCount: 1,
-		ChunkSize:        800,
-		ChunkOverlap:     120,
-		PlannerPrompt:    "You are a senior research planner. Break down complex user questions into at most {{max_steps}} ordered steps. Output strict JSON {\"strategy\": string, \"steps\": [{\"id\": \"step-1\", \"goal\": \"...\", \"questions\": [\"...\"], \"expected_evidence\": \"...\"}]}. Each step must be actionable and cite the signals it needs. if question is chinese, always use chinese.",
-		QueryPrompt:      "You are a search strategist. For the provided plan step craft up to 2 short search queries or keywords. Return JSON {\"queries\": [\"...\"]}. Keep queries specific to the step goal. if question is chinese, always use chinese.",
-		SynthesisPrompt:  "You are a staff research writer. Using only the supplied evidence, answer the question. Cite documents using [doc-id] format. Output helpful, structured text. if question is chinese, always use chinese.",
-		CriticPrompt:     "You are a meticulous reviewer. Check whether the draft answer follows the plan and uses evidence. Return JSON {\"verdict\": \"approve|revise\", \"issues\": [], \"notes\": \"\", \"final_answer\": \"...\"}. If verdict=approve keep final_answer equal to the draft. if question is chinese, always use chinese.",
-		NoAnswerMessage:  "抱歉，我没有在知识库中找到与该问题相关的答案，请提供更多上下文或重新描述问题。",
+		Name:                "agentic-rag",
+		TopK:                6,
+		RerankTopK:          6,
+		MaxPlanSteps:        4,
+		EnableCritic:        true,
+		GraphMaxVisits:      20,
+		MinEvidenceCount:    1,
+		MinSearchScore:      0.2,
+		EnableHybridSearch:  true,
+		HybridTopK:          5,
+		TitleScorePenalty:   0.85,
+		NormalizeEmbeddings: true,
+		ChunkSize:           800,
+		ChunkOverlap:        120,
+		ChunkMinSize:        200,
+		ChunkSeparator:      "\n\n",
+		PlannerPrompt:       "You are a senior research planner. Break down complex user questions into at most {{max_steps}} ordered steps. Output strict JSON {\"strategy\": string, \"steps\": [{\"id\": \"step-1\", \"goal\": \"...\", \"questions\": [\"...\"], \"expected_evidence\": \"...\"}]}. Each step must be actionable and cite the signals it needs. if question is chinese, always use chinese.",
+		QueryPrompt:         "You are a search strategist. For the provided plan step craft up to 2 short search queries or keywords. Return JSON {\"queries\": [\"...\"]}. Keep queries specific to the step goal. if question is chinese, always use chinese.",
+		SynthesisPrompt:     "You are a staff research writer. Using only the supplied evidence, answer the question. Cite documents using [doc-id] format. Output helpful, structured text. if question is chinese, always use chinese.",
+		CriticPrompt:        "You are a meticulous reviewer. Check whether the draft answer follows the plan and uses evidence. Return JSON {\"verdict\": \"approve|revise\", \"issues\": [], \"notes\": \"\", \"final_answer\": \"...\"}. If verdict=approve keep final_answer equal to the draft. if question is chinese, always use chinese.",
+		NoAnswerMessage:     "抱歉，我没有在知识库中找到与该问题相关的答案，请提供更多上下文或重新描述问题。",
 	}
 }
 
