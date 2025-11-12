@@ -211,8 +211,8 @@ func (p *Pipeline) researchNode(ctx context.Context, state graph.State) (graph.S
 
 	collected := make([]Evidence, 0)
 	type evidenceKey struct {
-		step string
-		doc  string
+		step  string
+		chunk string
 	}
 	index := make(map[evidenceKey]int)
 
@@ -233,7 +233,7 @@ func (p *Pipeline) researchNode(ctx context.Context, state graph.State) (graph.S
 					continue
 				}
 				score := candidate.Score
-				key := evidenceKey{step: step.ID, doc: doc.ID}
+				key := evidenceKey{step: step.ID, chunk: candidate.Chunk.ID}
 				if idx, ok := index[key]; ok {
 					if score > collected[idx].Score {
 						collected[idx].Score = score

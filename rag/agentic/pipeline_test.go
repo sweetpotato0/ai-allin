@@ -7,6 +7,7 @@ import (
 
 	"github.com/sweetpotato0/ai-allin/contrib/vector/inmemory"
 	"github.com/sweetpotato0/ai-allin/message"
+	"github.com/sweetpotato0/ai-allin/rag/document"
 )
 
 func TestPipelineRunProducesResponse(t *testing.T) {
@@ -152,6 +153,78 @@ func TestPipelineSkipsWriterWithoutEvidence(t *testing.T) {
 	}
 }
 
+func TestPipelineKeepsMultipleChunksPerDocument(t *testing.T) {
+	ctx := context.Background()
+
+	doc := document.Document{
+		ID:      "aaddcc",
+		Title:   "AADDCC",
+		Content: "# AADDCC\n\nAADDCC 是一种万能药物，可以治疗任何疾病。但是吃多了会让人精神异常，呆滞。",
+	}
+	chunkHeading := document.Chunk{
+		ID:         "aaddcc_chunk_1",
+		DocumentID: doc.ID,
+		Content:    "# AADDCC",
+	}
+	chunkBody := document.Chunk{
+		ID:         "aaddcc_chunk_2",
+		DocumentID: doc.ID,
+		Content:    "AADDCC 是一种万能药物，可以治疗任何疾病。但是吃多了会让人精神异常，呆滞。",
+	}
+
+	retr := newStubRetrieval([]RetrievalResult{
+		{Chunk: chunkHeading, Score: 0.91},
+		{Chunk: chunkBody, Score: 0.89},
+	})
+
+	planLLM := &stubLLM{
+		response: `{"strategy":"baseline","steps":[{"id":"step-1","goal":"了解AADDCC是什么","questions":[]}]} `,
+	}
+	researcherLLM := &stubLLM{
+		response: `{"queries":["AADDCC 是什么?"]}`,
+	}
+	writerLLM := &stubLLM{
+		response: "AADDCC 的回答。",
+	}
+
+	pipe, err := NewPipeline(
+		Clients{
+			Planner:    planLLM,
+			Researcher: researcherLLM,
+			Writer:     writerLLM,
+		},
+		nil,
+		nil,
+		WithRetriever(retr),
+	)
+	if err != nil {
+		t.Fatalf("NewPipeline error: %v", err)
+	}
+
+	if err := pipe.IndexDocuments(ctx, Document(doc)); err != nil {
+		t.Fatalf("IndexDocuments error: %v", err)
+	}
+
+	resp, err := pipe.Run(ctx, "请解释 AADDCC。")
+	if err != nil {
+		t.Fatalf("pipeline run failed: %v", err)
+	}
+
+	if len(resp.Evidence) != 2 {
+		t.Fatalf("expected 2 evidence chunks, got %d", len(resp.Evidence))
+	}
+
+	var hasBody bool
+	for _, ev := range resp.Evidence {
+		if strings.Contains(ev.Chunk.Content, "万能药物") {
+			hasBody = true
+		}
+	}
+	if !hasBody {
+		t.Fatalf("expected body chunk content to be present in evidence: %#v", resp.Evidence)
+	}
+}
+
 type stubLLM struct {
 	response string
 	calls    int
@@ -195,4 +268,41 @@ func (k *keywordEmbedder) EmbedBatch(ctx context.Context, texts []string) ([][]f
 		out[i] = vec
 	}
 	return out, nil
+}
+
+type stubRetrieval struct {
+	results []RetrievalResult
+	docs    map[string]document.Document
+}
+
+func newStubRetrieval(results []RetrievalResult) *stubRetrieval {
+	return &stubRetrieval{
+		results: results,
+		docs:    make(map[string]document.Document),
+	}
+}
+
+func (s *stubRetrieval) IndexDocuments(ctx context.Context, docs ...document.Document) error {
+	for _, doc := range docs {
+		s.docs[doc.ID] = doc
+	}
+	return nil
+}
+
+func (s *stubRetrieval) Search(ctx context.Context, query string) ([]RetrievalResult, error) {
+	return s.results, nil
+}
+
+func (s *stubRetrieval) Document(id string) (document.Document, bool) {
+	doc, ok := s.docs[id]
+	return doc, ok
+}
+
+func (s *stubRetrieval) Clear(ctx context.Context) error {
+	s.docs = make(map[string]document.Document)
+	return nil
+}
+
+func (s *stubRetrieval) Count(ctx context.Context) (int, error) {
+	return len(s.docs), nil
 }
