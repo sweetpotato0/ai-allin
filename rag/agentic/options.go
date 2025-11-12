@@ -1,6 +1,8 @@
 package agentic
 
 import (
+	"strings"
+
 	"github.com/sweetpotato0/ai-allin/rag/chunking"
 	"github.com/sweetpotato0/ai-allin/rag/reranker"
 )
@@ -9,17 +11,19 @@ import (
 // It intentionally groups prompt/middleware knobs and low-level retrieval parameters
 // so callers can construct reproducible agents from a single struct.
 type Config struct {
-	Name           string // Logical name for tracing/logging
-	TopK           int    // How many neighbors to pull from the vector store
-	RerankTopK     int    // How many results survive reranking
-	MaxPlanSteps   int    // Upper bound for planner emitted steps
-	EnableCritic   bool   // Toggle critic agent execution
-	GraphMaxVisits int    // Safety guard for graph execution
+	Name             string // Logical name for tracing/logging
+	TopK             int    // How many neighbors to pull from the vector store
+	RerankTopK       int    // How many results survive reranking
+	MaxPlanSteps     int    // Upper bound for planner emitted steps
+	EnableCritic     bool   // Toggle critic agent execution
+	GraphMaxVisits   int    // Safety guard for graph execution
+	MinEvidenceCount int    // Minimum evidence items required before synthesis runs
 
 	PlannerPrompt   string // Custom system prompt for planner agent
 	QueryPrompt     string // System prompt for researcher/query agent
 	SynthesisPrompt string // System prompt for writer/synthesizer agent
 	CriticPrompt    string // System prompt for critic agent
+	NoAnswerMessage string // Message emitted when evidence is insufficient
 
 	ChunkSize    int // Desired chunk size used by default chunker
 	ChunkOverlap int // Overlap between consecutive chunks
@@ -58,6 +62,15 @@ func WithCritic(enabled bool) Option {
 	}
 }
 
+// WithMinEvidenceCount sets the minimum amount of evidence required before synthesis runs.
+func WithMinEvidenceCount(count int) Option {
+	return func(cfg *Config) {
+		if count >= 0 {
+			cfg.MinEvidenceCount = count
+		}
+	}
+}
+
 // WithPlannerPrompt sets the system prompt used by the planner agent.
 func WithPlannerPrompt(prompt string) Option {
 	return func(cfg *Config) {
@@ -90,6 +103,15 @@ func WithCriticPrompt(prompt string) Option {
 	return func(cfg *Config) {
 		if prompt != "" {
 			cfg.CriticPrompt = prompt
+		}
+	}
+}
+
+// WithNoAnswerMessage customises the fallback message when there is no supporting evidence.
+func WithNoAnswerMessage(message string) Option {
+	return func(cfg *Config) {
+		if strings.TrimSpace(message) != "" {
+			cfg.NoAnswerMessage = message
 		}
 	}
 }
@@ -159,18 +181,20 @@ func WithGraphMaxVisits(max int) Option {
 
 func defaultConfig() *Config {
 	return &Config{
-		Name:            "agentic-rag",
-		TopK:            3,
-		RerankTopK:      4,
-		MaxPlanSteps:    4,
-		EnableCritic:    true,
-		GraphMaxVisits:  20,
-		ChunkSize:       800,
-		ChunkOverlap:    120,
-		PlannerPrompt:   "You are a senior research planner. Break down complex user questions into at most {{max_steps}} ordered steps. Output strict JSON {\"strategy\": string, \"steps\": [{\"id\": \"step-1\", \"goal\": \"...\", \"questions\": [\"...\"], \"expected_evidence\": \"...\"}]}. Each step must be actionable and cite the signals it needs.终使用中文呈现",
-		QueryPrompt:     "You are a search strategist. For the provided plan step craft up to 2 short search queries or keywords. Return JSON {\"queries\": [\"...\"]}. Keep queries specific to the step goal.终使用中文呈现",
-		SynthesisPrompt: "You are a staff research writer. Using only the supplied evidence, answer the question. Cite documents using [doc-id] format. Output helpful, structured text.终使用中文呈现",
-		CriticPrompt:    "You are a meticulous reviewer. Check whether the draft answer follows the plan and uses evidence. Return JSON {\"verdict\": \"approve|revise\", \"issues\": [], \"notes\": \"\", \"final_answer\": \"...\"}. If verdict=approve keep final_answer equal to the draft.终使用中文呈现",
+		Name:             "agentic-rag",
+		TopK:             3,
+		RerankTopK:       4,
+		MaxPlanSteps:     4,
+		EnableCritic:     true,
+		GraphMaxVisits:   20,
+		MinEvidenceCount: 1,
+		ChunkSize:        800,
+		ChunkOverlap:     120,
+		PlannerPrompt:    "You are a senior research planner. Break down complex user questions into at most {{max_steps}} ordered steps. Output strict JSON {\"strategy\": string, \"steps\": [{\"id\": \"step-1\", \"goal\": \"...\", \"questions\": [\"...\"], \"expected_evidence\": \"...\"}]}. Each step must be actionable and cite the signals it needs. if question is chinese, always use chinese.",
+		QueryPrompt:      "You are a search strategist. For the provided plan step craft up to 2 short search queries or keywords. Return JSON {\"queries\": [\"...\"]}. Keep queries specific to the step goal. if question is chinese, always use chinese.",
+		SynthesisPrompt:  "You are a staff research writer. Using only the supplied evidence, answer the question. Cite documents using [doc-id] format. Output helpful, structured text. if question is chinese, always use chinese.",
+		CriticPrompt:     "You are a meticulous reviewer. Check whether the draft answer follows the plan and uses evidence. Return JSON {\"verdict\": \"approve|revise\", \"issues\": [], \"notes\": \"\", \"final_answer\": \"...\"}. If verdict=approve keep final_answer equal to the draft. if question is chinese, always use chinese.",
+		NoAnswerMessage:  "抱歉，我没有在知识库中找到与该问题相关的答案，请提供更多上下文或重新描述问题。",
 	}
 }
 

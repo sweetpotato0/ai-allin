@@ -108,11 +108,57 @@ func TestPipelineWithoutCritic(t *testing.T) {
 	}
 }
 
+func TestPipelineSkipsWriterWithoutEvidence(t *testing.T) {
+	ctx := context.Background()
+
+	planLLM := &stubLLM{
+		response: `{"strategy":"baseline","steps":[{"id":"step-1","goal":"Find escalation policy","questions":["escalation policy details"],"expected_evidence":"policy doc"}]}`,
+	}
+	writerLLM := &stubLLM{
+		response: "This should never be returned.",
+	}
+
+	store := inmemory.NewInMemoryVectorStore()
+	embedder := &keywordEmbedder{}
+
+	fallback := "没有检索到相关内容"
+	pipe, err := NewPipeline(
+		Clients{
+			Planner: planLLM,
+			Writer:  writerLLM,
+		},
+		embedder,
+		store,
+		WithMinEvidenceCount(1),
+		WithNoAnswerMessage(fallback),
+	)
+	if err != nil {
+		t.Fatalf("NewPipeline error: %v", err)
+	}
+
+	resp, err := pipe.Run(ctx, "请告诉我最新的升级流程？")
+	if err != nil {
+		t.Fatalf("pipeline run failed: %v", err)
+	}
+
+	if len(resp.Evidence) != 0 {
+		t.Fatalf("expected no evidence, got %d items", len(resp.Evidence))
+	}
+	if resp.DraftAnswer != fallback || resp.FinalAnswer != fallback {
+		t.Fatalf("expected fallback answer %q, got draft=%q final=%q", fallback, resp.DraftAnswer, resp.FinalAnswer)
+	}
+	if writerLLM.calls != 0 {
+		t.Fatalf("expected writer LLM to be skipped, got %d calls", writerLLM.calls)
+	}
+}
+
 type stubLLM struct {
 	response string
+	calls    int
 }
 
 func (s *stubLLM) Generate(ctx context.Context, messages []*message.Message, tools []map[string]any) (*message.Message, error) {
+	s.calls++
 	return message.NewMessage(message.RoleAssistant, s.response), nil
 }
 

@@ -264,6 +264,18 @@ func (p *Pipeline) synthesizeNode(ctx context.Context, state graph.State) (graph
 	if err != nil {
 		return state, err
 	}
+	required := p.cfg.MinEvidenceCount
+	if required < 0 {
+		required = 0
+	}
+	if len(st.Evidence) < required {
+		fallback := strings.TrimSpace(p.cfg.NoAnswerMessage)
+		if fallback == "" {
+			fallback = "No supporting evidence was found for this question."
+		}
+		st.Draft = fallback
+		return state, nil
+	}
 	draft, err := p.writer.Compose(ctx, st.Question, st.Plan, st.Evidence)
 	if err != nil {
 		return state, err

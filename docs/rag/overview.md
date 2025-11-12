@@ -110,6 +110,7 @@ func main() {
 - **Chunking & reranking** – swap in `agentic.WithChunker(...)` or `agentic.WithReranker(...)` to control how data is prepared and scored.
 - **Bring your own retriever** – inject any retrieval implementation (hybrid search, external service, etc.) via `agentic.WithRetriever(...)`.
 - **Prompts** – override planner/query/writer/critic prompts with `WithPlannerPrompt`, `WithQueryPrompt`, `WithSynthesisPrompt`, and `WithCriticPrompt`.
+- **Answer safety** – demand supporting evidence with `WithMinEvidenceCount(n)` and customise the fallback `WithNoAnswerMessage(...)` so the writer refuses to answer when nothing relevant was found.
 - **Critic agent** – disable it via `WithCritic(false)` or supply a different LLM client through `Clients.Critic`.
 - **Graph extensions** – the underlying `graph.Graph` is stored on the pipeline; you can fork the package or wrap the pipeline to inject extra nodes (tool calls, structured logging, telemetry, etc.).
 
