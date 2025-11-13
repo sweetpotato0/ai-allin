@@ -46,6 +46,6 @@ func main() {
 	// Show message history
 	fmt.Println("\nMessage History:")
 	for i, msg := range ag.GetMessages() {
-		fmt.Printf("%d. [%s] %s\n", i+1, msg.Role, msg.Content)
+		fmt.Printf("%d. [%s] %s\n", i+1, msg.Role, msg.Text())
 	}
 }

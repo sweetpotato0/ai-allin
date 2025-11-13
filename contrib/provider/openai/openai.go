@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"iter"
 
 	"github.com/openai/openai-go"
 	"github.com/openai/openai-go/option"
@@ -74,17 +75,20 @@ func New(config *Config) *Provider {
 }
 
 // Generate implements agent.LLMClient interface
-func (p *Provider) Generate(ctx context.Context, messages []*message.Message, tools []map[string]any) (*message.Message, error) {
+func (p *Provider) Generate(ctx context.Context, req *agent.GenerateRequest) (*agent.GenerateResponse, error) {
+	if req == nil {
+		return nil, fmt.Errorf("generate request cannot be nil")
+	}
 	// Convert messages to OpenAI format
-	openAIMessages := make([]openai.ChatCompletionMessageParamUnion, 0, len(messages))
-	for _, msg := range messages {
+	openAIMessages := make([]openai.ChatCompletionMessageParamUnion, 0, len(req.Messages))
+	for _, msg := range req.Messages {
 		switch msg.Role {
 		case message.RoleSystem:
-			openAIMessages = append(openAIMessages, openai.SystemMessage(msg.Content))
+			openAIMessages = append(openAIMessages, openai.SystemMessage(msg.Text()))
 		case message.RoleUser:
-			openAIMessages = append(openAIMessages, openai.UserMessage(msg.Content))
+			openAIMessages = append(openAIMessages, openai.UserMessage(msg.Text()))
 		case message.RoleAssistant:
-			assistantMsg := openai.AssistantMessage(msg.Content)
+			assistantMsg := openai.AssistantMessage(msg.Text())
 			if len(msg.ToolCalls) > 0 {
 				toolCalls, err := encodeToolCalls(msg.ToolCalls)
 				if err != nil {
@@ -96,7 +100,7 @@ func (p *Provider) Generate(ctx context.Context, messages []*message.Message, to
 			}
 			openAIMessages = append(openAIMessages, assistantMsg)
 		case message.RoleTool:
-			openAIMessages = append(openAIMessages, openai.ToolMessage(msg.Content, msg.ToolID))
+			openAIMessages = append(openAIMessages, openai.ToolMessage(msg.Text(), msg.ToolID))
 		}
 	}
 
@@ -121,9 +125,9 @@ func (p *Provider) Generate(ctx context.Context, messages []*message.Message, to
 	}
 
 	// Add tools if provided
-	if len(tools) > 0 {
-		openAITools := make([]openai.ChatCompletionToolParam, 0, len(tools))
-		for _, tool := range tools {
+	if len(req.Tools) > 0 {
+		openAITools := make([]openai.ChatCompletionToolParam, 0, len(req.Tools))
+		for _, tool := range req.Tools {
 			// Convert tool schema
 			toolJSON, err := json.Marshal(tool)
 			if err != nil {
@@ -172,7 +176,8 @@ func (p *Provider) Generate(ctx context.Context, messages []*message.Message, to
 		responseMsg.ToolCalls = toolCalls
 	}
 
-	return responseMsg, nil
+	responseMsg.Completed = true
+	return &agent.GenerateResponse{Message: responseMsg}, nil
 }
 
 // SetTemperature updates the temperature setting
@@ -191,105 +196,103 @@ func (p *Provider) SetModel(model string) {
 }
 
 // GenerateStream implements agent.StreamLLMClient interface for streaming responses
-func (p *Provider) GenerateStream(ctx context.Context, messages []*message.Message, tools []map[string]any, callback agent.StreamCallback) (*message.Message, error) {
-	// Convert messages to OpenAI format
-	openAIMessages := make([]openai.ChatCompletionMessageParamUnion, 0, len(messages))
-	for _, msg := range messages {
-		switch msg.Role {
-		case message.RoleSystem:
-			openAIMessages = append(openAIMessages, openai.SystemMessage(msg.Content))
-		case message.RoleUser:
-			openAIMessages = append(openAIMessages, openai.UserMessage(msg.Content))
-		case message.RoleAssistant:
-			assistantMsg := openai.AssistantMessage(msg.Content)
-			if len(msg.ToolCalls) > 0 {
-				toolCalls, err := encodeToolCalls(msg.ToolCalls)
+func (p *Provider) GenerateStream(ctx context.Context, req *agent.GenerateStreamRequest) iter.Seq2[*message.Message, error] {
+	return func(yield func(*message.Message, error) bool) {
+		if req == nil {
+			yield(nil, fmt.Errorf("stream request cannot be nil"))
+			return
+		}
+
+		openAIMessages := make([]openai.ChatCompletionMessageParamUnion, 0, len(req.Messages))
+		for _, msg := range req.Messages {
+			switch msg.Role {
+			case message.RoleSystem:
+				openAIMessages = append(openAIMessages, openai.SystemMessage(msg.Text()))
+			case message.RoleUser:
+				openAIMessages = append(openAIMessages, openai.UserMessage(msg.Text()))
+			case message.RoleAssistant:
+				assistantMsg := openai.AssistantMessage(msg.Text())
+				if len(msg.ToolCalls) > 0 {
+					toolCalls, err := encodeToolCalls(msg.ToolCalls)
+					if err != nil {
+						yield(nil, fmt.Errorf("failed to encode tool calls: %w", err))
+						return
+					}
+					if assistantMsg.OfAssistant != nil {
+						assistantMsg.OfAssistant.ToolCalls = toolCalls
+					}
+				}
+				openAIMessages = append(openAIMessages, assistantMsg)
+			case message.RoleTool:
+				openAIMessages = append(openAIMessages, openai.ToolMessage(msg.Text(), msg.ToolID))
+			}
+		}
+
+		model := p.config.Model
+		if model == "" {
+			model = string(openai.ChatModelGPT4oMini)
+		}
+		params := openai.ChatCompletionNewParams{
+			Messages: openAIMessages,
+			Model:    openai.ChatModel(model),
+		}
+
+		if p.config.Temperature > 0 {
+			params.Temperature = param.NewOpt(p.config.Temperature)
+		}
+
+		if p.config.MaxTokens > 0 {
+			params.MaxCompletionTokens = param.NewOpt(p.config.MaxTokens)
+		}
+
+		if len(req.Tools) > 0 {
+			openAITools := make([]openai.ChatCompletionToolParam, 0, len(req.Tools))
+			for _, tool := range req.Tools {
+				toolJSON, err := json.Marshal(tool)
 				if err != nil {
-					return nil, fmt.Errorf("failed to encode tool calls: %w", err)
+					yield(nil, fmt.Errorf("failed to marshal tool: %w", err))
+					return
 				}
-				if assistantMsg.OfAssistant != nil {
-					assistantMsg.OfAssistant.ToolCalls = toolCalls
+
+				var toolParam openai.ChatCompletionToolParam
+				if err := json.Unmarshal(toolJSON, &toolParam); err != nil {
+					yield(nil, fmt.Errorf("failed to unmarshal tool param: %w", err))
+					return
 				}
+
+				openAITools = append(openAITools, toolParam)
 			}
-			openAIMessages = append(openAIMessages, assistantMsg)
-		case message.RoleTool:
-			openAIMessages = append(openAIMessages, openai.ToolMessage(msg.Content, msg.ToolID))
+			params.Tools = openAITools
 		}
-	}
 
-	// Build chat completion request with streaming
-	model := p.config.Model
-	if model == "" {
-		model = string(openai.ChatModelGPT4oMini)
-	}
-	params := openai.ChatCompletionNewParams{
-		Messages: openAIMessages,
-		Model:    openai.ChatModel(model),
-	}
+		stream := p.client.Chat.Completions.NewStreaming(ctx, params)
+		defer stream.Close()
 
-	// Set temperature if provided
-	if p.config.Temperature > 0 {
-		params.Temperature = param.NewOpt(p.config.Temperature)
-	}
+		finalMsg := message.NewMessage(message.RoleAssistant, "")
+		var accumulatedToolCalls []message.ToolCall
 
-	// Set max tokens if provided
-	if p.config.MaxTokens > 0 {
-		params.MaxCompletionTokens = param.NewOpt(p.config.MaxTokens)
-	}
-
-	// Add tools if provided
-	if len(tools) > 0 {
-		openAITools := make([]openai.ChatCompletionToolParam, 0, len(tools))
-		for _, tool := range tools {
-			// Convert tool schema
-			toolJSON, err := json.Marshal(tool)
-			if err != nil {
-				return nil, fmt.Errorf("failed to marshal tool: %w", err)
+		for stream.Next() {
+			event := stream.Current()
+			if len(event.Choices) == 0 {
+				continue
 			}
-
-			var toolParam openai.ChatCompletionToolParam
-			if err := json.Unmarshal(toolJSON, &toolParam); err != nil {
-				return nil, fmt.Errorf("failed to unmarshal tool param: %w", err)
-			}
-
-			openAITools = append(openAITools, toolParam)
-		}
-		params.Tools = openAITools
-	}
-
-	// Create streaming client
-	stream := p.client.Chat.Completions.NewStreaming(ctx, params)
-	defer stream.Close()
-
-	var responseText string
-	var accumulatedToolCalls []message.ToolCall
-
-	// Process the stream
-	for stream.Next() {
-		event := stream.Current()
-
-		if len(event.Choices) > 0 {
 			choice := event.Choices[0]
 
-			// Handle text delta
 			if choice.Delta.Content != "" {
-				responseText += choice.Delta.Content
-				// Call the callback with the token
-				if err := callback(choice.Delta.Content); err != nil {
-					stream.Close()
-					return nil, fmt.Errorf("callback error: %w", err)
+				finalMsg.AppendText(choice.Delta.Content)
+				chunk := message.NewMessage(message.RoleAssistant, choice.Delta.Content)
+				chunk.Completed = false
+				if !yield(chunk, nil) {
+					return
 				}
 			}
 
-			// Handle tool calls (if streaming provides them)
 			if len(choice.Delta.ToolCalls) > 0 {
 				for _, tc := range choice.Delta.ToolCalls {
 					idx := tc.Index
-					// Ensure we have enough space
 					for len(accumulatedToolCalls) <= int(idx) {
 						accumulatedToolCalls = append(accumulatedToolCalls, message.ToolCall{})
 					}
-					// Update tool call details
 					if tc.ID != "" {
 						accumulatedToolCalls[idx].ID = tc.ID
 					}
@@ -297,7 +300,6 @@ func (p *Provider) GenerateStream(ctx context.Context, messages []*message.Messa
 						accumulatedToolCalls[idx].Name = tc.Function.Name
 					}
 					if tc.Function.Arguments != "" {
-						// Parse arguments
 						var args map[string]any
 						if err := json.Unmarshal([]byte(tc.Function.Arguments), &args); err == nil {
 							accumulatedToolCalls[idx].Args = args
@@ -306,19 +308,18 @@ func (p *Provider) GenerateStream(ctx context.Context, messages []*message.Messa
 				}
 			}
 		}
-	}
 
-	if err := stream.Err(); err != nil {
-		return nil, fmt.Errorf("OpenAI streaming error: %w", err)
-	}
+		if err := stream.Err(); err != nil {
+			yield(nil, fmt.Errorf("OpenAI streaming error: %w", err))
+			return
+		}
 
-	// Create response message
-	responseMsg := message.NewMessage(message.RoleAssistant, responseText)
-	if len(accumulatedToolCalls) > 0 {
-		responseMsg.ToolCalls = accumulatedToolCalls
+		if len(accumulatedToolCalls) > 0 {
+			finalMsg.ToolCalls = accumulatedToolCalls
+		}
+		finalMsg.Completed = true
+		yield(finalMsg, nil)
 	}
-
-	return responseMsg, nil
 }
 
 func encodeToolCalls(calls []message.ToolCall) ([]openai.ChatCompletionMessageToolCallParam, error) {

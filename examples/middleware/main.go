@@ -18,8 +18,10 @@ import (
 // MockLLMClient for demonstration
 type MockLLMClient struct{}
 
-func (m *MockLLMClient) Generate(ctx context.Context, messages []*message.Message, tools []map[string]any) (*message.Message, error) {
-	return message.NewMessage(message.RoleAssistant, "This is a mock response from the LLM"), nil
+func (m *MockLLMClient) Generate(ctx context.Context, req *agent.GenerateRequest) (*agent.GenerateResponse, error) {
+	msg := message.NewMessage(message.RoleAssistant, "This is a mock response from the LLM")
+	msg.Completed = true
+	return &agent.GenerateResponse{Message: msg}, nil
 }
 
 func (m *MockLLMClient) SetTemperature(temp float64) {
@@ -114,8 +116,9 @@ func validationExample() {
 
 	// Create response filter
 	responseFilter := validator.NewResponseFilter(func(msg *message.Message) error {
-		if len(msg.Content) > 500 {
-			msg.Content = msg.Content[:500] + "... (truncated)"
+		content := msg.Text()
+		if len(content) > 500 {
+			msg.SetText(content[:500] + "... (truncated)")
 		}
 		return nil
 	})

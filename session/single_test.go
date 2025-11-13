@@ -299,10 +299,10 @@ func TestSingleSessionSnapshotIsolation(t *testing.T) {
 	})
 
 	snapshot := sess.Snapshot()
-	snapshot.Messages[1].Content = "mutated"
+	snapshot.Messages[1].SetText("mutated")
 
 	messages := sess.GetMessages()
-	if messages[1].Content != "hello" {
+	if messages[1].Text() != "hello" {
 		t.Errorf("expected snapshot mutations to not affect session state")
 	}
 }

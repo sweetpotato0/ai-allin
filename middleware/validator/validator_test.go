@@ -61,7 +61,7 @@ func TestInputValidator(t *testing.T) {
 func TestResponseFilter(t *testing.T) {
 	t.Run("filters response successfully", func(t *testing.T) {
 		filter := NewResponseFilter(func(msg *message.Message) error {
-			if len(msg.Content) > 100 {
+			if len(msg.Text()) > 100 {
 				return errors.New("response too long")
 			}
 			return nil
@@ -81,7 +81,7 @@ func TestResponseFilter(t *testing.T) {
 
 	t.Run("returns error for invalid response", func(t *testing.T) {
 		filter := NewResponseFilter(func(msg *message.Message) error {
-			if len(msg.Content) > 100 {
+			if len(msg.Text()) > 100 {
 				return errors.New("response too long")
 			}
 			return nil

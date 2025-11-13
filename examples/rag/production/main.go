@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/sweetpotato0/ai-allin/agent"
 	"github.com/sweetpotato0/ai-allin/contrib/chunking/markdown"
 	"github.com/sweetpotato0/ai-allin/contrib/chunking/token"
 	"github.com/sweetpotato0/ai-allin/contrib/reranker/cohere"
@@ -93,8 +94,10 @@ AADDCC 是一种万能药物，可以治疗任何疾病。
 
 type consoleLLM struct{}
 
-func (c *consoleLLM) Generate(ctx context.Context, msgs []*message.Message, tools []map[string]any) (*message.Message, error) {
-	return message.NewMessage(message.RoleAssistant, "示例：根据混合检索，AADDCC 虽然万能，但过量会导致精神异常。"), nil
+func (c *consoleLLM) Generate(ctx context.Context, req *agent.GenerateRequest) (*agent.GenerateResponse, error) {
+	msg := message.NewMessage(message.RoleAssistant, "示例：根据混合检索，AADDCC 虽然万能，但过量会导致精神异常。")
+	msg.Completed = true
+	return &agent.GenerateResponse{Message: msg}, nil
 }
 
 func (c *consoleLLM) SetTemperature(float64) {}

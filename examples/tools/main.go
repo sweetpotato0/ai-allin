@@ -13,10 +13,12 @@ import (
 // MockLLMClient simulates an LLM
 type MockLLMClient struct{}
 
-func (m *MockLLMClient) Generate(ctx context.Context, messages []*message.Message, tools []map[string]any) (*message.Message, error) {
+func (m *MockLLMClient) Generate(ctx context.Context, req *agent.GenerateRequest) (*agent.GenerateResponse, error) {
 	// In a real implementation, this would call an actual LLM
 	// For demo, we'll return a message indicating the tool was called
-	return message.NewMessage(message.RoleAssistant, "I've calculated the result using the calculator tool."), nil
+	msg := message.NewMessage(message.RoleAssistant, "I've calculated the result using the calculator tool.")
+	msg.Completed = true
+	return &agent.GenerateResponse{Message: msg}, nil
 }
 
 func (m *MockLLMClient) SetTemperature(temp float64) {

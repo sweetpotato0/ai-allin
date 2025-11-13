@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 
+	"iter"
+
 	"github.com/sweetpotato0/ai-allin/memory"
 	"github.com/sweetpotato0/ai-allin/message"
 )
@@ -15,7 +17,7 @@ type StreamCallback func(token string) error
 type StreamLLMClient interface {
 	LLMClient
 	// GenerateStream generates a response with token streaming
-	GenerateStream(ctx context.Context, messages []*message.Message, tools []map[string]any, callback StreamCallback) (*message.Message, error)
+	GenerateStream(ctx context.Context, req *GenerateStreamRequest) iter.Seq2[*message.Message, error]
 }
 
 // RunStream executes the agent with streaming output
@@ -67,9 +69,50 @@ func (a *Agent) RunStream(ctx context.Context, input string, callback StreamCall
 		}
 
 		// Call LLM with streaming
-		response, err := streamProvider.GenerateStream(ctx, a.ctx.GetMessages(), toolSchemas, callback)
-		if err != nil {
-			return "", fmt.Errorf("LLM generation failed: %w", err)
+		streamSeq := streamProvider.GenerateStream(ctx, &GenerateStreamRequest{
+			Messages: a.ctx.GetMessages(),
+			Tools:    toolSchemas,
+		})
+		if streamSeq == nil {
+			return "", fmt.Errorf("LLM streaming returned empty sequence")
+		}
+
+		var (
+			streamErr error
+			response  *message.Message
+		)
+
+		streamSeq(func(msg *message.Message, seqErr error) bool {
+			if seqErr != nil {
+				streamErr = seqErr
+				return false
+			}
+			if msg == nil {
+				return true
+			}
+
+			if callback != nil && !msg.Completed {
+				for _, part := range msg.Content.Parts {
+					if part.Text == "" {
+						continue
+					}
+					if err := callback(part.Text); err != nil {
+						streamErr = err
+						return false
+					}
+				}
+			}
+
+			if msg.Completed {
+				response = msg
+			}
+			return true
+		})
+		if streamErr != nil {
+			return "", streamErr
+		}
+		if response == nil {
+			return "", fmt.Errorf("LLM streaming ended without final response")
 		}
 
 		a.AddMessage(response)
@@ -79,15 +122,15 @@ func (a *Agent) RunStream(ctx context.Context, input string, callback StreamCall
 			// No tool calls, return the response
 			if a.enableMemory && a.memory != nil {
 				// Store conversation in memory
-				conversationContent := fmt.Sprintf("User: %s\nAssistant: %s", input, response.Content)
+				conversationContent := fmt.Sprintf("User: %s\nAssistant: %s", input, response.Text())
 				mem := &memory.Memory{
 					ID:       memory.GenerateMemoryID(),
 					Content:  conversationContent,
-					Metadata: map[string]any{"input": input, "response": response.Content},
+					Metadata: map[string]any{"input": input, "response": response.Text()},
 				}
 				a.memory.AddMemory(ctx, mem)
 			}
-			return response.Content, nil
+			return response.Text(), nil
 		}
 
 		// Execute tool calls

@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 
+	"github.com/sweetpotato0/ai-allin/agent"
 	"github.com/sweetpotato0/ai-allin/message"
 )
 
@@ -85,22 +86,25 @@ type groqError struct {
 }
 
 // Generate implements agent.LLMClient interface
-func (p *Provider) Generate(ctx context.Context, messages []*message.Message, tools []map[string]any) (*message.Message, error) {
+func (p *Provider) Generate(ctx context.Context, req *agent.GenerateRequest) (*agent.GenerateResponse, error) {
 	if p.config.APIKey == "" {
 		return nil, fmt.Errorf("Groq API key not configured")
 	}
+	if req == nil {
+		return nil, fmt.Errorf("generate request cannot be nil")
+	}
 
 	// Convert messages to Groq format
-	groqMessages := make([]groqMessage, len(messages))
-	for i, msg := range messages {
+	groqMessages := make([]groqMessage, len(req.Messages))
+	for i, msg := range req.Messages {
 		groqMessages[i] = groqMessage{
 			Role:    string(msg.Role),
-			Content: msg.Content,
+			Content: msg.Text(),
 		}
 	}
 
 	// Create request
-	req := groqRequest{
+	payload := groqRequest{
 		Model:       p.config.Model,
 		Messages:    groqMessages,
 		MaxTokens:   p.config.MaxTokens,
@@ -108,7 +112,7 @@ func (p *Provider) Generate(ctx context.Context, messages []*message.Message, to
 	}
 
 	// Marshal request
-	reqBody, err := json.Marshal(req)
+	reqBody, err := json.Marshal(payload)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
@@ -157,7 +161,11 @@ func (p *Provider) Generate(ctx context.Context, messages []*message.Message, to
 		return nil, fmt.Errorf("no choices in response")
 	}
 
-	return message.NewMessage(message.RoleAssistant, resp.Choices[0].Message.Content), nil
+	msg := message.NewMessage(message.RoleAssistant, resp.Choices[0].Message.Content)
+	msg.Completed = true
+	return &agent.GenerateResponse{
+		Message: msg,
+	}, nil
 }
 
 // SetTemperature updates the temperature setting

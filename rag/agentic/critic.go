@@ -42,12 +42,17 @@ func (c *critic) Review(ctx context.Context, question, draft string, plan *Plan,
 		message.NewMessage(message.RoleUser, userPrompt),
 	}
 
-	resp, err := c.llm.Generate(ctx, msgs, nil)
+	genResp, err := c.llm.Generate(ctx, &agent.GenerateRequest{
+		Messages: msgs,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("critic failed: %w", err)
 	}
+	if genResp == nil || genResp.Message == nil {
+		return nil, fmt.Errorf("critic returned empty response")
+	}
 
-	feedback, err := decodeJSON[CriticFeedback](resp.Content)
+	feedback, err := decodeJSON[CriticFeedback](genResp.Message.Text())
 	if err != nil {
 		return &CriticFeedback{
 			Verdict:     "approve",

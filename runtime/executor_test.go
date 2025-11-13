@@ -64,12 +64,14 @@ func newTestAgent() *agent.Agent {
 
 type mockLLM struct{}
 
-func (m *mockLLM) Generate(ctx context.Context, msgs []*message.Message, tools []map[string]any) (*message.Message, error) {
+func (m *mockLLM) Generate(ctx context.Context, req *agent.GenerateRequest) (*agent.GenerateResponse, error) {
 	last := ""
-	if len(msgs) > 0 {
-		last = msgs[len(msgs)-1].Content
+	if req != nil && len(req.Messages) > 0 {
+		last = req.Messages[len(req.Messages)-1].Text()
 	}
-	return message.NewMessage(message.RoleAssistant, "echo:"+last), nil
+	msg := message.NewMessage(message.RoleAssistant, "echo:"+last)
+	msg.Completed = true
+	return &agent.GenerateResponse{Message: msg}, nil
 }
 
 func (m *mockLLM) SetTemperature(float64) {}

@@ -29,25 +29,25 @@ func main() {
 	fmt.Printf("\nCurrent context size: %d messages\n", ctx.Size())
 	fmt.Println("\nAll messages:")
 	for i, msg := range ctx.GetMessages() {
-		fmt.Printf("%d. [%s] %s\n", i+1, msg.Role, msg.Content)
+		fmt.Printf("%d. [%s] %s\n", i+1, msg.Role, msg.Text())
 	}
 
 	// Get messages by role
 	fmt.Println("\nUser messages only:")
 	userMsgs := ctx.GetMessagesByRole(message.RoleUser)
 	for i, msg := range userMsgs {
-		fmt.Printf("%d. %s\n", i+1, msg.Content)
+		fmt.Printf("%d. %s\n", i+1, msg.Text())
 	}
 
 	fmt.Println("\nAssistant messages only:")
 	assistantMsgs := ctx.GetMessagesByRole(message.RoleAssistant)
 	for i, msg := range assistantMsgs {
-		fmt.Printf("%d. %s\n", i+1, msg.Content)
+		fmt.Printf("%d. %s\n", i+1, msg.Text())
 	}
 
 	// Get last message
 	lastMsg := ctx.GetLastMessage()
-	fmt.Printf("\nLast message: [%s] %s\n", lastMsg.Role, lastMsg.Content)
+	fmt.Printf("\nLast message: [%s] %s\n", lastMsg.Role, lastMsg.Text())
 
 	// Demonstrate context size management
 	fmt.Println("\n=== Testing Context Size Limit ===")
@@ -68,7 +68,7 @@ func main() {
 	fmt.Printf("Actual size: %d messages\n", smallCtx.Size())
 	fmt.Println("\nRemaining messages (system + recent):")
 	for i, msg := range smallCtx.GetMessages() {
-		fmt.Printf("%d. [%s] %s\n", i+1, msg.Role, msg.Content)
+		fmt.Printf("%d. [%s] %s\n", i+1, msg.Role, msg.Text())
 	}
 
 	// Clear context
@@ -104,7 +104,7 @@ func main() {
 		if msg.Role == message.RoleSystem {
 			continue
 		}
-		fmt.Printf("[%s] %s\n", msg.Role, msg.Content)
+		fmt.Printf("[%s] %s\n", msg.Role, msg.Text())
 	}
 
 	fmt.Printf("\nTotal messages in context: %d\n", conversationCtx.Size())

@@ -16,11 +16,22 @@ const (
 type Message struct {
 	ID        string         `json:"id"`
 	Role      Role           `json:"role"`
-	Content   string         `json:"content"`
+	Completed bool           `json:"completed,omitempty"`
+	Content   Content        `json:"content"`
 	ToolCalls []ToolCall     `json:"tool_calls,omitempty"`
 	ToolID    string         `json:"tool_id,omitempty"` // For tool response messages
 	Metadata  map[string]any `json:"metadata,omitempty"`
 	CreatedAt time.Time      `json:"created_at"`
+}
+
+// Content encapsulates the payload produced by an LLM.
+type Content struct {
+	Parts []Part `json:"parts,omitempty"`
+}
+
+// Part represents a unit of content. New fields can be added (e.g. tables, images).
+type Part struct {
+	Text string `json:"text,omitempty"`
 }
 
 // ToolCall represents a tool invocation request
@@ -33,13 +44,14 @@ type ToolCall struct {
 
 // NewMessage creates a new message with the given role and content
 func NewMessage(role Role, content string) *Message {
-	return &Message{
+	msg := &Message{
 		ID:        generateID(),
 		Role:      role,
-		Content:   content,
 		CreatedAt: time.Now(),
 		Metadata:  make(map[string]any),
 	}
+	msg.SetText(content)
+	return msg
 }
 
 // Clone creates a deep copy of the message.
@@ -48,6 +60,10 @@ func Clone(msg *Message) *Message {
 		return nil
 	}
 	cloned := *msg
+	if len(msg.Content.Parts) > 0 {
+		cloned.Content.Parts = make([]Part, len(msg.Content.Parts))
+		copy(cloned.Content.Parts, msg.Content.Parts)
+	}
 	if msg.Metadata != nil {
 		cloned.Metadata = make(map[string]any, len(msg.Metadata))
 		for k, v := range msg.Metadata {
@@ -105,14 +121,15 @@ func NewToolCallMessage(toolCalls []ToolCall) *Message {
 
 // NewToolResponseMessage creates a tool response message
 func NewToolResponseMessage(toolID, content string) *Message {
-	return &Message{
+	msg := &Message{
 		ID:        generateID(),
 		Role:      RoleTool,
-		Content:   content,
 		ToolID:    toolID,
 		CreatedAt: time.Now(),
 		Metadata:  make(map[string]any),
 	}
+	msg.SetText(content)
+	return msg
 }
 
 // generateID generates a unique message ID
@@ -120,4 +137,38 @@ func generateID() string {
 	// Simple implementation using timestamp
 	// In production, consider using UUID
 	return time.Now().Format("20060102150405.000000")
+}
+
+// Text returns the first textual part within the message.
+func (m *Message) Text() string {
+	if m == nil || len(m.Content.Parts) == 0 {
+		return ""
+	}
+	return m.Content.Parts[0].Text
+}
+
+// SetText replaces the message content with a single text part.
+func (m *Message) SetText(text string) {
+	if m == nil {
+		return
+	}
+	if len(m.Content.Parts) == 0 {
+		m.Content.Parts = make([]Part, 1)
+	}
+	m.Content.Parts[0] = Part{Text: text}
+	if len(m.Content.Parts) > 1 {
+		m.Content.Parts = m.Content.Parts[:1]
+	}
+}
+
+// AppendText appends text to the last part, creating one if needed.
+func (m *Message) AppendText(text string) {
+	if m == nil {
+		return
+	}
+	if len(m.Content.Parts) == 0 {
+		m.Content.Parts = []Part{{Text: text}}
+		return
+	}
+	m.Content.Parts[len(m.Content.Parts)-1].Text += text
 }

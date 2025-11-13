@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"iter"
 
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/anthropics/anthropic-sdk-go/option"
@@ -78,22 +79,25 @@ func New(config *Config) *Provider {
 }
 
 // Generate implements agent.LLMClient interface
-func (p *Provider) Generate(ctx context.Context, messages []*message.Message, tools []map[string]any) (*message.Message, error) {
+func (p *Provider) Generate(ctx context.Context, req *agent.GenerateRequest) (*agent.GenerateResponse, error) {
+	if req == nil {
+		return nil, fmt.Errorf("generate request cannot be nil")
+	}
 	// Separate system messages from conversation
 	var systemPrompts []string
 	conversationMessages := make([]anthropic.MessageParam, 0)
 
-	for _, msg := range messages {
+	for _, msg := range req.Messages {
 		if msg.Role == message.RoleSystem {
-			systemPrompts = append(systemPrompts, msg.Content)
+			systemPrompts = append(systemPrompts, msg.Text())
 		} else {
 			switch msg.Role {
 			case message.RoleUser:
 				conversationMessages = append(conversationMessages,
-					anthropic.NewUserMessage(anthropic.NewTextBlock(msg.Content)))
+					anthropic.NewUserMessage(anthropic.NewTextBlock(msg.Text())))
 			case message.RoleAssistant:
 				conversationMessages = append(conversationMessages,
-					anthropic.NewAssistantMessage(anthropic.NewTextBlock(msg.Content)))
+					anthropic.NewAssistantMessage(anthropic.NewTextBlock(msg.Text())))
 			}
 		}
 	}
@@ -125,9 +129,9 @@ func (p *Provider) Generate(ctx context.Context, messages []*message.Message, to
 	}
 
 	// Add tools if provided
-	if len(tools) > 0 {
-		claudeTools := make([]anthropic.ToolUnionParam, 0, len(tools))
-		for _, tool := range tools {
+	if len(req.Tools) > 0 {
+		claudeTools := make([]anthropic.ToolUnionParam, 0, len(req.Tools))
+		for _, tool := range req.Tools {
 			toolJSON, err := json.Marshal(tool)
 			if err != nil {
 				return nil, fmt.Errorf("failed to marshal tool: %w", err)
@@ -182,7 +186,8 @@ func (p *Provider) Generate(ctx context.Context, messages []*message.Message, to
 		responseMsg.ToolCalls = toolCalls
 	}
 
-	return responseMsg, nil
+	responseMsg.Completed = true
+	return &agent.GenerateResponse{Message: responseMsg}, nil
 }
 
 // SetTemperature updates the temperature setting
@@ -201,119 +206,110 @@ func (p *Provider) SetModel(model string) {
 }
 
 // GenerateStream implements agent.StreamLLMClient interface for streaming responses
-func (p *Provider) GenerateStream(ctx context.Context, messages []*message.Message, tools []map[string]any, callback agent.StreamCallback) (*message.Message, error) {
-	// Separate system messages from conversation
-	var systemPrompts []string
-	conversationMessages := make([]anthropic.MessageParam, 0, len(messages))
+func (p *Provider) GenerateStream(ctx context.Context, req *agent.GenerateStreamRequest) iter.Seq2[*message.Message, error] {
+	return func(yield func(*message.Message, error) bool) {
+		if req == nil {
+			yield(nil, fmt.Errorf("stream request cannot be nil"))
+			return
+		}
 
-	for _, msg := range messages {
-		if msg.Role == message.RoleSystem {
-			systemPrompts = append(systemPrompts, msg.Content)
-		} else {
+		var systemPrompts []string
+		conversationMessages := make([]anthropic.MessageParam, 0, len(req.Messages))
+
+		for _, msg := range req.Messages {
+			if msg.Role == message.RoleSystem {
+				systemPrompts = append(systemPrompts, msg.Text())
+				continue
+			}
 			switch msg.Role {
 			case message.RoleUser:
 				conversationMessages = append(conversationMessages,
-					anthropic.NewUserMessage(anthropic.NewTextBlock(msg.Content)))
+					anthropic.NewUserMessage(anthropic.NewTextBlock(msg.Text())))
 			case message.RoleAssistant:
 				conversationMessages = append(conversationMessages,
-					anthropic.NewAssistantMessage(anthropic.NewTextBlock(msg.Content)))
+					anthropic.NewAssistantMessage(anthropic.NewTextBlock(msg.Text())))
 			}
 		}
-	}
 
-	// Build message creation params (no Stream field in params)
-	params := anthropic.MessageNewParams{
-		Model:     anthropic.Model(p.config.Model),
-		Messages:  conversationMessages,
-		MaxTokens: p.config.MaxTokens,
-	}
-
-	// Add system prompts if present
-	if len(systemPrompts) > 0 {
-		systemText := ""
-		for i, sp := range systemPrompts {
-			if i > 0 {
-				systemText += "\n"
-			}
-			systemText += sp
+		params := anthropic.MessageNewParams{
+			Model:     anthropic.Model(p.config.Model),
+			Messages:  conversationMessages,
+			MaxTokens: p.config.MaxTokens,
 		}
-		params.System = []anthropic.TextBlockParam{
-			{Text: systemText},
+
+		if len(systemPrompts) > 0 {
+			systemText := ""
+			for i, sp := range systemPrompts {
+				if i > 0 {
+					systemText += "\n"
+				}
+				systemText += sp
+			}
+			params.System = []anthropic.TextBlockParam{{Text: systemText}}
 		}
-	}
 
-	// Add temperature if set
-	if p.config.Temperature > 0 {
-		params.Temperature = param.NewOpt(p.config.Temperature)
-	}
-
-	// Add tools if provided
-	if len(tools) > 0 {
-		claudeTools := make([]anthropic.ToolUnionParam, 0, len(tools))
-		for _, tool := range tools {
-			toolJSON, err := json.Marshal(tool)
-			if err != nil {
-				return nil, fmt.Errorf("failed to marshal tool: %w", err)
-			}
-
-			var toolParam anthropic.ToolParam
-			if err := json.Unmarshal(toolJSON, &toolParam); err != nil {
-				return nil, fmt.Errorf("failed to unmarshal tool param: %w", err)
-			}
-
-			// Wrap ToolParam into ToolUnionParam
-			unionParam := anthropic.ToolUnionParam{
-				OfTool: &toolParam,
-			}
-			claudeTools = append(claudeTools, unionParam)
+		if p.config.Temperature > 0 {
+			params.Temperature = param.NewOpt(p.config.Temperature)
 		}
-		params.Tools = claudeTools
-	}
 
-	// Create streaming client
-	stream := p.client.Messages.NewStreaming(ctx, params)
-	defer stream.Close()
+		if len(req.Tools) > 0 {
+			claudeTools := make([]anthropic.ToolUnionParam, 0, len(req.Tools))
+			for _, tool := range req.Tools {
+				toolJSON, err := json.Marshal(tool)
+				if err != nil {
+					yield(nil, fmt.Errorf("failed to marshal tool: %w", err))
+					return
+				}
 
-	var responseText string
-	var toolCalls []message.ToolCall
-	var finalMessage *anthropic.Message
+				var toolParam anthropic.ToolParam
+				if err := json.Unmarshal(toolJSON, &toolParam); err != nil {
+					yield(nil, fmt.Errorf("failed to unmarshal tool param: %w", err))
+					return
+				}
 
-	// Process the stream
-	for stream.Next() {
-		event := stream.Current()
+				claudeTools = append(claudeTools, anthropic.ToolUnionParam{OfTool: &toolParam})
+			}
+			params.Tools = claudeTools
+		}
 
-		// Handle different event types
-		switch event.Type {
-		case "content_block_delta":
-			// Text token delta
-			contentDelta := event.AsContentBlockDelta()
-			if contentDelta.Delta.Type == "text_delta" {
-				if contentDelta.Delta.Text != "" {
-					responseText += contentDelta.Delta.Text
-					// Call the callback with the text
-					if err := callback(contentDelta.Delta.Text); err != nil {
-						stream.Close()
-						return nil, fmt.Errorf("callback error: %w", err)
+		stream := p.client.Messages.NewStreaming(ctx, params)
+		defer stream.Close()
+
+		finalMsg := message.NewMessage(message.RoleAssistant, "")
+		var finalMessage *anthropic.Message
+
+		for stream.Next() {
+			event := stream.Current()
+			switch event.Type {
+			case "content_block_delta":
+				contentDelta := event.AsContentBlockDelta()
+				if contentDelta.Delta.Type == "text_delta" && contentDelta.Delta.Text != "" {
+					finalMsg.AppendText(contentDelta.Delta.Text)
+					chunk := message.NewMessage(message.RoleAssistant, contentDelta.Delta.Text)
+					chunk.Completed = false
+					if !yield(chunk, nil) {
+						return
 					}
 				}
+			case "message_start":
+				msgStart := event.AsMessageStart()
+				finalMessage = &msgStart.Message
+			case "message_stop":
+				// no-op
 			}
-		case "message_start":
-			// Message started - capture initial message structure
-			msgStart := event.AsMessageStart()
-			finalMessage = &msgStart.Message
-		case "message_stop":
-			// Message stopped - end of stream
 		}
-	}
 
-	if err := stream.Err(); err != nil {
-		return nil, fmt.Errorf("Claude streaming error: %w", err)
-	}
+		if err := stream.Err(); err != nil {
+			yield(nil, fmt.Errorf("Claude streaming error: %w", err))
+			return
+		}
 
-	// Extract tool uses from final message content
-	if finalMessage != nil {
-		for _, content := range finalMessage.Content {
-			if content.Type == "tool_use" {
+		if finalMessage != nil {
+			var toolCalls []message.ToolCall
+			for _, content := range finalMessage.Content {
+				if content.Type != "tool_use" {
+					continue
+				}
 				var args map[string]any
 				if err := json.Unmarshal(content.Input, &args); err == nil {
 					toolCalls = append(toolCalls, message.ToolCall{
@@ -323,14 +319,12 @@ func (p *Provider) GenerateStream(ctx context.Context, messages []*message.Messa
 					})
 				}
 			}
+			if len(toolCalls) > 0 {
+				finalMsg.ToolCalls = toolCalls
+			}
 		}
-	}
 
-	// Create response message
-	responseMsg := message.NewMessage(message.RoleAssistant, responseText)
-	if len(toolCalls) > 0 {
-		responseMsg.ToolCalls = toolCalls
+		finalMsg.Completed = true
+		yield(finalMsg, nil)
 	}
-
-	return responseMsg, nil
 }

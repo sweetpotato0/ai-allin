@@ -42,12 +42,18 @@ func (s *synthesizer) Compose(ctx context.Context, question string, plan *Plan, 
 		message.NewMessage(message.RoleUser, userPrompt),
 	}
 
-	resp, err := s.llm.Generate(ctx, msgs, nil)
+	genResp, err := s.llm.Generate(ctx, &agent.GenerateRequest{
+		Messages: msgs,
+	})
 	if err != nil {
 		return "", fmt.Errorf("synthesizer failed: %w", err)
 	}
 
-	return strings.TrimSpace(resp.Content), nil
+	if genResp == nil || genResp.Message == nil {
+		return "", fmt.Errorf("synthesizer returned empty response")
+	}
+
+	return strings.TrimSpace(genResp.Message.Text()), nil
 }
 
 func formatEvidence(evidence []Evidence) string {

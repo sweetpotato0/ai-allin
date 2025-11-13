@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/sweetpotato0/ai-allin/agent"
 	"github.com/sweetpotato0/ai-allin/contrib/vector/inmemory"
 	"github.com/sweetpotato0/ai-allin/message"
 	"github.com/sweetpotato0/ai-allin/rag/document"
@@ -230,9 +231,11 @@ type stubLLM struct {
 	calls    int
 }
 
-func (s *stubLLM) Generate(ctx context.Context, messages []*message.Message, tools []map[string]any) (*message.Message, error) {
+func (s *stubLLM) Generate(ctx context.Context, req *agent.GenerateRequest) (*agent.GenerateResponse, error) {
 	s.calls++
-	return message.NewMessage(message.RoleAssistant, s.response), nil
+	msg := message.NewMessage(message.RoleAssistant, s.response)
+	msg.Completed = true
+	return &agent.GenerateResponse{Message: msg}, nil
 }
 
 func (s *stubLLM) SetTemperature(float64) {}

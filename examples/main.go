@@ -17,9 +17,11 @@ import (
 // MockLLMClient is a mock LLM client for demonstration
 type MockLLMClient struct{}
 
-func (m *MockLLMClient) Generate(ctx context.Context, messages []*message.Message, tools []map[string]any) (*message.Message, error) {
+func (m *MockLLMClient) Generate(ctx context.Context, req *agent.GenerateRequest) (*agent.GenerateResponse, error) {
 	// Mock response
-	return message.NewMessage(message.RoleAssistant, "This is a mock response from the LLM"), nil
+	msg := message.NewMessage(message.RoleAssistant, "This is a mock response from the LLM")
+	msg.Completed = true
+	return &agent.GenerateResponse{Message: msg}, nil
 }
 
 func (m *MockLLMClient) SetTemperature(temp float64) {

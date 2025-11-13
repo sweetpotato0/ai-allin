@@ -103,10 +103,16 @@ type echoProvider struct {
 	tag string
 }
 
-func (e *echoProvider) Generate(ctx context.Context, msgs []*message.Message, tools []map[string]any) (*message.Message, error) {
-	turn := len(msgs)
-	last := msgs[turn-1].Content
-	return message.NewMessage(message.RoleAssistant, fmt.Sprintf("%s sees turn %d: %s", e.tag, turn, last)), nil
+func (e *echoProvider) Generate(ctx context.Context, req *agent.GenerateRequest) (*agent.GenerateResponse, error) {
+	turn := 0
+	last := ""
+	if req != nil && len(req.Messages) > 0 {
+		turn = len(req.Messages)
+		last = req.Messages[turn-1].Text()
+	}
+	msg := message.NewMessage(message.RoleAssistant, fmt.Sprintf("%s sees turn %d: %s", e.tag, turn, last))
+	msg.Completed = true
+	return &agent.GenerateResponse{Message: msg}, nil
 }
 
 func (e *echoProvider) SetTemperature(float64) {}

@@ -26,8 +26,10 @@ func NewMockLLMClient() *MockLLMClient {
 	}
 }
 
-func (m *MockLLMClient) Generate(ctx context.Context, messages []*message.Message, tools []map[string]any) (*message.Message, error) {
-	return message.NewMessage(message.RoleAssistant, m.response), nil
+func (m *MockLLMClient) Generate(ctx context.Context, req *GenerateRequest) (*GenerateResponse, error) {
+	msg := message.NewMessage(message.RoleAssistant, m.response)
+	msg.Completed = true
+	return &GenerateResponse{Message: msg}, nil
 }
 
 func (m *MockLLMClient) SetTemperature(temp float64) {
@@ -125,7 +127,7 @@ func TestAddMessage(t *testing.T) {
 	messages := agent.GetMessages()
 	found := false
 	for _, m := range messages {
-		if m.Role == message.RoleUser && m.Content == "Hello!" {
+		if m.Role == message.RoleUser && m.Text() == "Hello!" {
 			found = true
 			break
 		}
@@ -219,13 +221,13 @@ func TestAgentRestoreMessages(t *testing.T) {
 		t.Fatalf("expected 2 messages after restore, got %d", len(messages))
 	}
 
-	if messages[0].Content != "override" {
-		t.Errorf("expected system prompt to be restored, got %s", messages[0].Content)
+	if messages[0].Text() != "override" {
+		t.Errorf("expected system prompt to be restored, got %s", messages[0].Text())
 	}
 
 	agent.RestoreMessages(nil)
 	messages = agent.GetMessages()
-	if len(messages) == 0 || messages[0].Content != "default" {
+	if len(messages) == 0 || messages[0].Text() != "default" {
 		t.Errorf("expected fallback to default system prompt, got %+v", messages)
 	}
 }

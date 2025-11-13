@@ -9,6 +9,7 @@ import (
 	"github.com/sweetpotato0/ai-allin/agent"
 	"github.com/sweetpotato0/ai-allin/contrib/provider/claude"
 	"github.com/sweetpotato0/ai-allin/contrib/provider/openai"
+	"github.com/sweetpotato0/ai-allin/message"
 )
 
 func main() {
@@ -115,17 +116,15 @@ func claudeStreamingExample() {
 // MockStreamingClient demonstrates fallback behavior when streaming is not supported
 type MockStreamingClient struct{}
 
-func (m *MockStreamingClient) Generate(ctx context.Context, messages any, tools any) (any, error) {
-	return &mockMessage{
-		Role:    "assistant",
-		Content: "This is a mock response without streaming support.",
-	}, nil
+func (m *MockStreamingClient) Generate(ctx context.Context, req *agent.GenerateRequest) (*agent.GenerateResponse, error) {
+	msg := message.NewMessage(message.RoleAssistant, "This is a mock response without streaming support.")
+	msg.Completed = true
+	return &agent.GenerateResponse{Message: msg}, nil
 }
 
-type mockMessage struct {
-	Role    string
-	Content string
-}
+func (m *MockStreamingClient) SetTemperature(float64) {}
+func (m *MockStreamingClient) SetMaxTokens(int64)     {}
+func (m *MockStreamingClient) SetModel(string)        {}
 
 func mockStreamingExample() {
 	// Create a mock provider that doesn't support streaming

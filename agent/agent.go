@@ -16,7 +16,7 @@ import (
 // LLMClient defines the interface for LLM providers
 type LLMClient interface {
 	// Generate generates a response from the LLM
-	Generate(ctx context.Context, messages []*message.Message, tools []map[string]any) (*message.Message, error)
+	Generate(ctx context.Context, req *GenerateRequest) (*GenerateResponse, error)
 
 	// SetTemperature updates the temperature setting for generation
 	SetTemperature(temp float64)
@@ -277,10 +277,18 @@ func (a *Agent) Run(ctx context.Context, input string) (string, error) {
 			}
 
 			// Call LLM
-			response, err := a.llm.Generate(mwCtx.Context(), a.ctx.GetMessages(), toolSchemas)
+			req := &GenerateRequest{
+				Messages: a.ctx.GetMessages(),
+				Tools:    toolSchemas,
+			}
+			genResp, err := a.llm.Generate(mwCtx.Context(), req)
 			if err != nil {
 				return fmt.Errorf("LLM generation failed: %w", err)
 			}
+			if genResp == nil || genResp.Message == nil {
+				return fmt.Errorf("LLM generation returned empty response")
+			}
+			response := genResp.Message
 
 			a.AddMessage(response)
 			mwCtx.Response = response
@@ -290,11 +298,11 @@ func (a *Agent) Run(ctx context.Context, input string) (string, error) {
 				// No tool calls, return the response
 				if a.enableMemory && a.memory != nil {
 					// Store conversation in memory
-					conversationContent := fmt.Sprintf("User: %s\nAssistant: %s", input, response.Content)
+					conversationContent := fmt.Sprintf("User: %s\nAssistant: %s", input, response.Text())
 					mem := &memory.Memory{
 						ID:       memory.GenerateMemoryID(),
 						Content:  conversationContent,
-						Metadata: map[string]any{"input": input, "response": response.Content},
+						Metadata: map[string]any{"input": input, "response": response.Text()},
 					}
 					a.memory.AddMemory(mwCtx.Context(), mem)
 				}
@@ -325,7 +333,7 @@ func (a *Agent) Run(ctx context.Context, input string) (string, error) {
 	}
 
 	if mwCtx.Response != nil {
-		return mwCtx.Response.Content, nil
+		return mwCtx.Response.Text(), nil
 	}
 
 	return "", fmt.Errorf("no response generated")

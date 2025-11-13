@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 
+	"github.com/sweetpotato0/ai-allin/agent"
 	"github.com/sweetpotato0/ai-allin/message"
 )
 
@@ -81,22 +82,25 @@ type cohereError struct {
 }
 
 // Generate implements agent.LLMClient interface
-func (p *Provider) Generate(ctx context.Context, messages []*message.Message, tools []map[string]any) (*message.Message, error) {
+func (p *Provider) Generate(ctx context.Context, req *agent.GenerateRequest) (*agent.GenerateResponse, error) {
 	if p.config.APIKey == "" {
 		return nil, fmt.Errorf("Cohere API key not configured")
 	}
+	if req == nil {
+		return nil, fmt.Errorf("generate request cannot be nil")
+	}
 
 	// Convert messages to Cohere format
-	cohereMessages := make([]cohereMessage, len(messages))
-	for i, msg := range messages {
+	cohereMessages := make([]cohereMessage, len(req.Messages))
+	for i, msg := range req.Messages {
 		cohereMessages[i] = cohereMessage{
 			Role:    string(msg.Role),
-			Message: msg.Content,
+			Message: msg.Text(),
 		}
 	}
 
 	// Create request
-	req := cohereRequest{
+	payload := cohereRequest{
 		Model:       p.config.Model,
 		Messages:    cohereMessages,
 		MaxTokens:   p.config.MaxTokens,
@@ -104,7 +108,7 @@ func (p *Provider) Generate(ctx context.Context, messages []*message.Message, to
 	}
 
 	// Marshal request
-	reqBody, err := json.Marshal(req)
+	reqBody, err := json.Marshal(payload)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
@@ -149,7 +153,11 @@ func (p *Provider) Generate(ctx context.Context, messages []*message.Message, to
 		return nil, fmt.Errorf("Cohere API error: %s", resp.Error.Message)
 	}
 
-	return message.NewMessage(message.RoleAssistant, resp.Text), nil
+	msg := message.NewMessage(message.RoleAssistant, resp.Text)
+	msg.Completed = true
+	return &agent.GenerateResponse{
+		Message: msg,
+	}, nil
 }
 
 // SetTemperature updates the temperature setting

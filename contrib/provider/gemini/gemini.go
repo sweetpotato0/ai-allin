@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 
+	"github.com/sweetpotato0/ai-allin/agent"
 	"github.com/sweetpotato0/ai-allin/message"
 )
 
@@ -87,33 +88,36 @@ type geminiError struct {
 }
 
 // Generate implements agent.LLMClient interface
-func (p *Provider) Generate(ctx context.Context, messages []*message.Message, tools []map[string]any) (*message.Message, error) {
+func (p *Provider) Generate(ctx context.Context, req *agent.GenerateRequest) (*agent.GenerateResponse, error) {
 	if p.config.APIKey == "" {
 		return nil, fmt.Errorf("Gemini API key not configured")
 	}
+	if req == nil {
+		return nil, fmt.Errorf("generate request cannot be nil")
+	}
 
 	// Convert messages to Gemini format
-	geminiMessages := make([]geminiMessage, len(messages))
-	for i, msg := range messages {
+	geminiMessages := make([]geminiMessage, len(req.Messages))
+	for i, msg := range req.Messages {
 		geminiMessages[i] = geminiMessage{
 			Role: string(msg.Role),
 			Parts: []struct {
 				Text string `json:"text"`
 			}{
-				{Text: msg.Content},
+				{Text: msg.Text()},
 			},
 		}
 	}
 
 	// Create request
-	req := geminiRequest{
+	payload := geminiRequest{
 		Contents:    geminiMessages,
 		MaxTokens:   p.config.MaxTokens,
 		Temperature: p.config.Temperature,
 	}
 
 	// Marshal request
-	reqBody, err := json.Marshal(req)
+	reqBody, err := json.Marshal(payload)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
@@ -166,7 +170,11 @@ func (p *Provider) Generate(ctx context.Context, messages []*message.Message, to
 		return nil, fmt.Errorf("no content parts in candidate")
 	}
 
-	return message.NewMessage(message.RoleAssistant, resp.Candidates[0].Content.Parts[0].Text), nil
+	msg := message.NewMessage(message.RoleAssistant, resp.Candidates[0].Content.Parts[0].Text)
+	msg.Completed = true
+	return &agent.GenerateResponse{
+		Message: msg,
+	}, nil
 }
 
 // SetTemperature updates the temperature setting

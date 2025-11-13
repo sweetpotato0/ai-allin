@@ -11,8 +11,8 @@ func TestNewMessage(t *testing.T) {
 		t.Errorf("Expected role %s, got %s", RoleUser, msg.Role)
 	}
 
-	if msg.Content != "Hello, world!" {
-		t.Errorf("Expected content 'Hello, world!', got '%s'", msg.Content)
+	if msg.Text() != "Hello, world!" {
+		t.Errorf("Expected content 'Hello, world!', got '%s'", msg.Text())
 	}
 
 	if msg.ID == "" {
@@ -51,8 +51,8 @@ func TestNewToolResponseMessage(t *testing.T) {
 		t.Errorf("Expected role %s, got %s", RoleTool, msg.Role)
 	}
 
-	if msg.Content != "result" {
-		t.Errorf("Expected content 'result', got '%s'", msg.Content)
+	if msg.Text() != "result" {
+		t.Errorf("Expected content 'result', got '%s'", msg.Text())
 	}
 
 	if msg.ToolID != "call1" {

@@ -52,7 +52,7 @@ func (m *ResponseLogger) Execute(ctx *middleware.Context, next middleware.Handle
 	err := next(ctx)
 	if m.logger != nil {
 		if ctx.Response != nil {
-			m.logger(fmt.Sprintf("[ResponseLogger] Output: %s", ctx.Response.Content))
+			m.logger(fmt.Sprintf("[ResponseLogger] Output: %s", ctx.Response.Text()))
 		} else if err != nil {
 			m.logger(fmt.Sprintf("[ResponseLogger] Error: %v", err))
 		}

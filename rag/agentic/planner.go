@@ -37,12 +37,17 @@ func (p *planner) Plan(ctx context.Context, question string) (*Plan, error) {
 		message.NewMessage(message.RoleUser, fmt.Sprintf("User question: %s\nReturn JSON only.", question)),
 	}
 
-	resp, err := p.llm.Generate(ctx, messages, nil)
+	genResp, err := p.llm.Generate(ctx, &agent.GenerateRequest{
+		Messages: messages,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("planner generation failed: %w", err)
 	}
+	if genResp == nil || genResp.Message == nil {
+		return nil, fmt.Errorf("planner returned empty response")
+	}
 
-	plan, err := decodeJSON[Plan](resp.Content)
+	plan, err := decodeJSON[Plan](genResp.Message.Text())
 	if err != nil {
 		return nil, fmt.Errorf("planner output invalid: %w", err)
 	}
