@@ -30,6 +30,9 @@ type Config struct {
 	CriticPrompt    string // System prompt for critic agent
 	NoAnswerMessage string // Message emitted when evidence is insufficient
 
+	QueryLLMRetries int // How many times the researcher retries invalid LLM output
+	QueryMaxResults int // Upper bound on emitted queries per plan step
+
 	ChunkSize      int    // Desired chunk size used by default chunker
 	ChunkOverlap   int    // Overlap between consecutive chunks
 	ChunkMinSize   int    // Merge short chunks until reaching this size
@@ -181,6 +184,24 @@ func WithQueryPrompt(prompt string) Option {
 	}
 }
 
+// WithQueryRetries overrides how many times the researcher retries when the LLM output cannot be parsed.
+func WithQueryRetries(retries int) Option {
+	return func(cfg *Config) {
+		if retries >= 0 {
+			cfg.QueryLLMRetries = retries
+		}
+	}
+}
+
+// WithQueryMaxResults limits how many queries the researcher may emit per plan step.
+func WithQueryMaxResults(max int) Option {
+	return func(cfg *Config) {
+		if max > 0 {
+			cfg.QueryMaxResults = max
+		}
+	}
+}
+
 // WithSynthesisPrompt sets the writer/synthesiser system prompt.
 func WithSynthesisPrompt(prompt string) Option {
 	return func(cfg *Config) {
@@ -296,15 +317,41 @@ func defaultConfig() *Config {
 		EnableCritic:     true,
 		GraphMaxVisits:   20,
 		MinEvidenceCount: 1,
+		QueryLLMRetries:  2,
+		QueryMaxResults:  4,
 		ChunkSize:        800,
 		ChunkOverlap:     120,
 		ChunkMinSize:     200,
 		ChunkSeparator:   "\n\n",
-		PlannerPrompt:    "You are a senior research planner. Break down complex user questions into at most {{max_steps}} ordered steps. Output strict JSON {\"strategy\": string, \"steps\": [{\"id\": \"step-1\", \"goal\": \"...\", \"questions\": [\"...\"], \"expected_evidence\": \"...\"}]}. Each step must be actionable and cite the signals it needs. if question is chinese, always use chinese.",
-		QueryPrompt:      "You are a search strategist. For the provided plan step craft up to 2 short search queries or keywords. Return JSON {\"queries\": [\"...\"]}. Keep queries specific to the step goal. if question is chinese, always use chinese.",
-		SynthesisPrompt:  "You are a staff research writer. Using only the supplied evidence, answer the question. Cite documents using [doc-id] format. Output helpful, structured text. if question is chinese, always use chinese.",
-		CriticPrompt:     "You are a meticulous reviewer. Check whether the draft answer follows the plan and uses evidence. Return JSON {\"verdict\": \"approve|revise\", \"issues\": [], \"notes\": \"\", \"final_answer\": \"...\"}. If verdict=approve keep final_answer equal to the draft. if question is chinese, always use chinese.",
-		NoAnswerMessage:  "抱歉，我没有在知识库中找到与该问题相关的答案，请提供更多上下文或重新描述问题。",
+		PlannerPrompt: `You are the lead planner for an agentic RAG pipeline. Break the user question into at most {{max_steps}} sequential research steps that collect the evidence needed for a final answer. Output compact JSON only matching {"strategy":"...", "steps":[{"id":"step-1","goal":"...","questions":["..."],"expected_evidence":"...","downstream_support":"..."}]}.
+Planning rules:
+- "strategy" is a single sentence describing the overall approach.
+- Each step is actionable, scoped to one objective, and states which signals or document types to hunt for inside "expected_evidence".
+- Use "questions" for concrete clarifications or keyword variants that inform search.
+- Note how the step unlocks later work in "downstream_support" (leave empty if unnecessary) and keep IDs sequential (step-1, step-2, ...).
+- Merge redundant tasks, never exceed {{max_steps}} steps, and mirror the user's language (Chinese input -> Chinese plan, otherwise English).`,
+		QueryPrompt: `You are a multilingual search strategist assisting the researcher. Transform the provided plan step into retrieval-ready search queries.
+Return strict JSON {"queries":["..."],"question":"original question"} with no prose.
+Rules:
+- Produce at least one and at most the requested maximum number of queries; diversify vocabulary, operators, and intent.
+- Keep each query under 18 words, inject concrete entities, time ranges, file types, or domain hints drawn from the step's goal, questions, and expected evidence.
+- Remove duplicates or vague boilerplate; if a clarifying probe would unblock the step, include one precise question-style query.
+- Always write the queries in the same language as the user's question (Chinese stays Chinese, otherwise English).`,
+		SynthesisPrompt: `You are the staff research writer for this RAG system. Using only the supplied evidence, craft a precise, citation-backed answer to the user question.
+Guidelines:
+1. Synthesize across documents, pointing out agreements or contradictions before concluding.
+2. Attribute every factual statement with [doc-id] citations placed at the end of the supporting sentence or clause.
+3. Organise the response into short sections or bullet lists when multiple themes exist, and close with a brief "Limitations / Next steps" note when coverage is partial.
+4. If the evidence cannot answer the question, say so explicitly and describe what information is missing instead of guessing.
+5. Respond entirely in the user's language (Chinese input -> Chinese output; otherwise English).`,
+		CriticPrompt: `You are the QA critic for the agentic RAG pipeline. Verify that the draft answer follows the plan, uses the supplied evidence, and satisfies the user instructions.
+Return JSON only: {"verdict":"approve|revise","issues":["..."],"notes":"...","final_answer":"..."}.
+Rules:
+- Approve only when the draft answers the question, covers required plan steps, and cites existing evidence without hallucinations.
+- List concrete problems in "issues" (missing evidence, wrong citations, unanswered sub-questions) referencing plan step IDs or [doc-id] when helpful.
+- If revision is needed, set "verdict":"revise" and provide an improved, citation-backed answer in "final_answer"; otherwise copy the draft verbatim.
+- Match the language of the original question (Chinese stays Chinese, else English).`,
+		NoAnswerMessage: "抱歉，我没有在知识库中找到与该问题相关的答案，请提供更多上下文或重新描述问题。",
 	}
 	WithRetrievalPreset(RetrievalPresetHybrid)(cfg)
 	return cfg
