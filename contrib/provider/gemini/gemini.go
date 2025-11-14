@@ -32,6 +32,8 @@ func DefaultConfig(apiKey string) *Config {
 	}
 }
 
+var _ agent.LLMClient = (*Provider)(nil)
+
 // Provider implements the LLMClient interface for Google Gemini
 type Provider struct {
 	config *Config
@@ -172,9 +174,7 @@ func (p *Provider) Generate(ctx context.Context, req *agent.GenerateRequest) (*a
 
 	msg := message.NewMessage(message.RoleAssistant, resp.Candidates[0].Content.Parts[0].Text)
 	msg.Completed = true
-	return &agent.GenerateResponse{
-		Message: msg,
-	}, nil
+	return &agent.GenerateResponse{Message: msg}, nil
 }
 
 // SetTemperature updates the temperature setting

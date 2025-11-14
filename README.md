@@ -61,13 +61,13 @@ func main() {
         agent.WithProvider(llm),
     )
 
-    // Run agent
-    response, err := ag.Run(context.Background(), "What is AI?")
+    // Run agent; Run now returns *message.Message so you can inspect metadata as well.
+    resp, err := ag.Run(context.Background(), "What is AI?")
     if err != nil {
         panic(err)
     }
 
-    println(response)
+    println(resp.Text())
 }
 ```
 

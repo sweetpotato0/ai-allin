@@ -14,14 +14,15 @@ const (
 
 // Message represents a single message in a conversation
 type Message struct {
-	ID        string         `json:"id"`
-	Role      Role           `json:"role"`
-	Completed bool           `json:"completed,omitempty"`
-	Content   Content        `json:"content"`
-	ToolCalls []ToolCall     `json:"tool_calls,omitempty"`
-	ToolID    string         `json:"tool_id,omitempty"` // For tool response messages
-	Metadata  map[string]any `json:"metadata,omitempty"`
-	CreatedAt time.Time      `json:"created_at"`
+	ID           string         `json:"id"`
+	Role         Role           `json:"role"`
+	FinishReason string         `json:"finish_reason"`
+	Completed    bool           `json:"completed,omitempty"`
+	Content      Content        `json:"content"`
+	ToolCalls    []ToolCall     `json:"tool_calls,omitempty"`
+	ToolID       string         `json:"tool_id,omitempty"` // For tool response messages
+	Metadata     map[string]any `json:"metadata,omitempty"`
+	CreatedAt    time.Time      `json:"created_at"`
 }
 
 // Content encapsulates the payload produced by an LLM.
@@ -51,6 +52,17 @@ func NewMessage(role Role, content string) *Message {
 		Metadata:  make(map[string]any),
 	}
 	msg.SetText(content)
+	return msg
+}
+
+// NewEmptyMessage creates a new empty message with the given role
+func NewEmptyMessage(role Role) *Message {
+	msg := &Message{
+		ID:        generateID(),
+		Role:      role,
+		CreatedAt: time.Now(),
+		Metadata:  make(map[string]any),
+	}
 	return msg
 }
 
@@ -144,7 +156,11 @@ func (m *Message) Text() string {
 	if m == nil || len(m.Content.Parts) == 0 {
 		return ""
 	}
-	return m.Content.Parts[0].Text
+	msg := ""
+	for _, part := range m.Content.Parts {
+		msg += part.Text
+	}
+	return msg
 }
 
 // SetText replaces the message content with a single text part.

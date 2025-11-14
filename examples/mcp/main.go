@@ -83,5 +83,5 @@ func main() {
 	}
 
 	fmt.Println("Agent response:")
-	fmt.Println(response)
+	fmt.Println(response.Text())
 }

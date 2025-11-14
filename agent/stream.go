@@ -10,58 +10,62 @@ import (
 	"github.com/sweetpotato0/ai-allin/message"
 )
 
-// StreamCallback is called for each token received from the LLM during streaming
-type StreamCallback func(token string) error
+// StreamCallback is called for each message received from the LLM during streaming
+type StreamCallback func(*message.Message) error
 
 // StreamLLMClient defines the interface for LLM providers that support streaming
 type StreamLLMClient interface {
 	LLMClient
 	// GenerateStream generates a response with token streaming
-	GenerateStream(ctx context.Context, req *GenerateStreamRequest) iter.Seq2[*message.Message, error]
+	GenerateStream(ctx context.Context, req *GenerateRequest) iter.Seq2[*GenerateResponse, error]
 }
 
 // RunStream executes the agent with streaming output
 // It calls the callback function for each token received from the LLM
-func (a *Agent) RunStream(ctx context.Context, input string, callback StreamCallback) (string, error) {
-	if err := a.ensureToolProviders(ctx); err != nil {
-		return "", err
-	}
-
-	// Check if LLM client supports streaming
-	streamProvider, ok := a.llm.(StreamLLMClient)
-	if !ok {
-		// Fallback to regular Run if streaming not supported
-		result, err := a.Run(ctx, input)
-		if err != nil {
-			return "", err
+func (a *Agent) RunStream(ctx context.Context, input string, callback StreamCallback) iter.Seq2[*message.Message, error] {
+	return func(yield func(*message.Message, error) bool) {
+		if err := a.ensureToolProviders(ctx); err != nil {
+			yield(nil, err)
+			return
 		}
-		// Still call the callback with the complete result
-		if err := callback(result); err != nil {
-			return "", err
-		}
-		return result, nil
-	}
 
-	// Add user message
-	userMsg := message.NewMessage(message.RoleUser, input)
-	a.AddMessage(userMsg)
-
-	// Search relevant memories if enabled
-	if a.enableMemory && a.memory != nil {
-		memories, err := a.memory.SearchMemory(ctx, input)
-		if err == nil && len(memories) > 0 {
-			// Add memories as context (simplified)
-			memoryContext := "Relevant memories:\n"
-			for _, mem := range memories {
-				memoryContext += fmt.Sprintf("- %v\n", mem)
+		// Check if LLM client supports streaming
+		streamProvider, ok := a.llm.(StreamLLMClient)
+		if !ok {
+			// Fallback to regular Run if streaming not supported
+			result, err := a.Run(ctx, input)
+			if err != nil {
+				yield(nil, err)
+				return
 			}
-			contextMsg := message.NewMessage(message.RoleSystem, memoryContext)
-			a.ctx.AddMessage(contextMsg)
+			// Still call the callback with the complete result
+			if err := callback(result); err != nil {
+				yield(nil, err)
+				return
+			}
+			yield(result, nil)
+			return
 		}
-	}
 
-	// Execution loop with tool calls
-	for i := 0; i < a.maxIterations; i++ {
+		// Add user message
+		userMsg := message.NewMessage(message.RoleUser, input)
+		a.AddMessage(userMsg)
+
+		// Search relevant memories if enabled
+		if a.enableMemory && a.memory != nil {
+			memories, err := a.memory.SearchMemory(ctx, input)
+			if err == nil && len(memories) > 0 {
+				// Add memories as context (simplified)
+				memoryContext := "Relevant memories:\n"
+				for _, mem := range memories {
+					memoryContext += fmt.Sprintf("- %v\n", mem)
+				}
+				contextMsg := message.NewMessage(message.RoleSystem, memoryContext)
+				a.ctx.AddMessage(contextMsg)
+			}
+		}
+
+		// Execution loop with tool calls
 		// Get tool schemas if enabled
 		var toolSchemas []map[string]any
 		if a.enableTools {
@@ -69,72 +73,77 @@ func (a *Agent) RunStream(ctx context.Context, input string, callback StreamCall
 		}
 
 		// Call LLM with streaming
-		streamSeq := streamProvider.GenerateStream(ctx, &GenerateStreamRequest{
+		streamSeq := streamProvider.GenerateStream(ctx, &GenerateRequest{
 			Messages: a.ctx.GetMessages(),
 			Tools:    toolSchemas,
 		})
 		if streamSeq == nil {
-			return "", fmt.Errorf("LLM streaming returned empty sequence")
+			yield(nil, fmt.Errorf("LLM streaming returned empty sequence"))
+			return
 		}
 
 		var (
 			streamErr error
-			response  *message.Message
+			finalResp *message.Message
 		)
 
-		streamSeq(func(msg *message.Message, seqErr error) bool {
-			if seqErr != nil {
-				streamErr = seqErr
-				return false
+		for resp, err := range streamSeq {
+			if err != nil {
+				streamErr = err
+				break
 			}
-			if msg == nil {
-				return true
+			if resp == nil {
+				continue
 			}
 
-			if callback != nil && !msg.Completed {
-				for _, part := range msg.Content.Parts {
-					if part.Text == "" {
-						continue
-					}
-					if err := callback(part.Text); err != nil {
-						streamErr = err
-						return false
-					}
+			if callback != nil && !resp.Message.Completed {
+				if err := callback(resp.Message); err != nil {
+					streamErr = err
+					break
 				}
 			}
 
-			if msg.Completed {
-				response = msg
+			if streamErr != nil {
+				yield(nil, streamErr)
+				return
 			}
-			return true
-		})
-		if streamErr != nil {
-			return "", streamErr
-		}
-		if response == nil {
-			return "", fmt.Errorf("LLM streaming ended without final response")
+
+			if resp.Message.Completed {
+				finalResp = resp.Message
+			} else {
+				if !yield(resp.Message, nil) {
+					return
+				}
+			}
 		}
 
-		a.AddMessage(response)
+		if finalResp == nil {
+			yield(nil, fmt.Errorf("LLM streaming ended without final response"))
+			return
+		}
+
+		a.AddMessage(finalResp)
 
 		// Check if there are tool calls
-		if len(response.ToolCalls) == 0 {
+		if len(finalResp.ToolCalls) == 0 {
 			// No tool calls, return the response
 			if a.enableMemory && a.memory != nil {
 				// Store conversation in memory
-				conversationContent := fmt.Sprintf("User: %s\nAssistant: %s", input, response.Text())
+				conversationContent := fmt.Sprintf("User: %s\nAssistant: %s", input, finalResp.Text())
 				mem := &memory.Memory{
 					ID:       memory.GenerateMemoryID(),
 					Content:  conversationContent,
-					Metadata: map[string]any{"input": input, "response": response.Text()},
+					Metadata: map[string]any{"input": input, "response": finalResp.Text()},
 				}
 				a.memory.AddMemory(ctx, mem)
 			}
-			return response.Text(), nil
+
+			yield(finalResp, nil)
+			return
 		}
 
 		// Execute tool calls
-		for _, toolCall := range response.ToolCalls {
+		for _, toolCall := range finalResp.ToolCalls {
 			result, err := a.tools.Execute(ctx, toolCall.Name, toolCall.Args)
 			if err != nil {
 				result = fmt.Sprintf("Error executing tool %s: %v", toolCall.Name, err)
@@ -145,10 +154,8 @@ func (a *Agent) RunStream(ctx context.Context, input string, callback StreamCall
 			a.AddMessage(toolMsg)
 		}
 
-		// Continue loop to get final response
+		yield(finalResp, nil)
 	}
-
-	return "", fmt.Errorf("max iterations (%d) reached", a.maxIterations)
 }
 
 // StreamingOptions holds configuration for streaming operations

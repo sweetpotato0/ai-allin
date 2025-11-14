@@ -41,7 +41,7 @@ func main() {
 	}
 
 	fmt.Printf("User: Hello, how are you?\n")
-	fmt.Printf("Agent: %s\n", result)
+	fmt.Printf("Agent: %s\n", result.Text())
 
 	// Show message history
 	fmt.Println("\nMessage History:")

@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"strings"
 
-	openaisdk "github.com/openai/openai-go"
-	"github.com/openai/openai-go/option"
+	openaisdk "github.com/openai/openai-go/v3"
+	"github.com/openai/openai-go/v3/option"
 	"github.com/sweetpotato0/ai-allin/vector"
 )
 

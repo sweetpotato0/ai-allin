@@ -9,8 +9,9 @@ import (
 	"strings"
 	"time"
 
-	openaisdk "github.com/openai/openai-go"
+	openaisdk "github.com/openai/openai-go/v3"
 	"github.com/sweetpotato0/ai-allin/agent"
+	"github.com/sweetpotato0/ai-allin/contrib/chunking/markdown"
 	openai_embedder "github.com/sweetpotato0/ai-allin/contrib/embedder/openai"
 	"github.com/sweetpotato0/ai-allin/contrib/provider/openai"
 	pgvector "github.com/sweetpotato0/ai-allin/contrib/vector/pg"
@@ -65,6 +66,8 @@ func main() {
 		embedder,
 		pgStore,
 		agentic.WithTopK(1),
+		agentic.WithChunker(markdown.New()),
+		agentic.WithHybridSearch(true),
 	)
 	if err != nil {
 		log.Fatalf("build pipeline: %v", err)

@@ -12,6 +12,7 @@ func TestSimpleChunkerMergesShortSegmentsAndTags(t *testing.T) {
 	ch := NewSimpleChunker(
 		WithChunkSize(120),
 		WithMinChunkSize(60),
+		WithOverlap(80),
 		WithSeparator("\n\n"),
 	)
 
@@ -24,8 +25,8 @@ func TestSimpleChunkerMergesShortSegmentsAndTags(t *testing.T) {
 	if err != nil {
 		t.Fatalf("chunk error: %v", err)
 	}
-	if len(chunks) != 2 {
-		t.Fatalf("expected 2 chunks, got %d", len(chunks))
+	if len(chunks) != 3 {
+		t.Fatalf("expected 3 chunks, got %d", len(chunks))
 	}
 
 	first := chunks[0]

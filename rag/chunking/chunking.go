@@ -109,6 +109,9 @@ func NewSimpleChunker(opts ...Option) *SimpleChunker {
 	for _, opt := range opts {
 		opt(cfg)
 	}
+	if cfg.ChunkSize < cfg.Overlap {
+		cfg.Overlap = cfg.ChunkSize / 3
+	}
 	return &SimpleChunker{
 		size:          cfg.ChunkSize,
 		overlap:       cfg.Overlap,

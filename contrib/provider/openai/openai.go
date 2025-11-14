@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"iter"
 
-	"github.com/openai/openai-go"
-	"github.com/openai/openai-go/option"
-	"github.com/openai/openai-go/packages/param"
+	"github.com/openai/openai-go/v3"
+	"github.com/openai/openai-go/v3/option"
+	"github.com/openai/openai-go/v3/packages/param"
 	"github.com/sweetpotato0/ai-allin/agent"
 	"github.com/sweetpotato0/ai-allin/message"
 )
@@ -49,6 +49,8 @@ func DefaultConfig() *Config {
 		Temperature: 0.7,
 	}
 }
+
+var _ agent.LLMClient = (*Provider)(nil)
 
 // Provider implements the LLMClient interface for OpenAI
 type Provider struct {
@@ -126,7 +128,7 @@ func (p *Provider) Generate(ctx context.Context, req *agent.GenerateRequest) (*a
 
 	// Add tools if provided
 	if len(req.Tools) > 0 {
-		openAITools := make([]openai.ChatCompletionToolParam, 0, len(req.Tools))
+		openAITools := make([]openai.ChatCompletionToolUnionParam, 0, len(req.Tools))
 		for _, tool := range req.Tools {
 			// Convert tool schema
 			toolJSON, err := json.Marshal(tool)
@@ -134,7 +136,7 @@ func (p *Provider) Generate(ctx context.Context, req *agent.GenerateRequest) (*a
 				return nil, fmt.Errorf("failed to marshal tool: %w", err)
 			}
 
-			var toolParam openai.ChatCompletionToolParam
+			var toolParam openai.ChatCompletionToolUnionParam
 			if err := json.Unmarshal(toolJSON, &toolParam); err != nil {
 				return nil, fmt.Errorf("failed to unmarshal tool param: %w", err)
 			}
@@ -196,8 +198,8 @@ func (p *Provider) SetModel(model string) {
 }
 
 // GenerateStream implements agent.StreamLLMClient interface for streaming responses
-func (p *Provider) GenerateStream(ctx context.Context, req *agent.GenerateStreamRequest) iter.Seq2[*message.Message, error] {
-	return func(yield func(*message.Message, error) bool) {
+func (p *Provider) GenerateStream(ctx context.Context, req *agent.GenerateRequest) iter.Seq2[*agent.GenerateResponse, error] {
+	return func(yield func(*agent.GenerateResponse, error) bool) {
 		if req == nil {
 			yield(nil, fmt.Errorf("stream request cannot be nil"))
 			return
@@ -246,7 +248,7 @@ func (p *Provider) GenerateStream(ctx context.Context, req *agent.GenerateStream
 		}
 
 		if len(req.Tools) > 0 {
-			openAITools := make([]openai.ChatCompletionToolParam, 0, len(req.Tools))
+			openAITools := make([]openai.ChatCompletionToolUnionParam, 0, len(req.Tools))
 			for _, tool := range req.Tools {
 				toolJSON, err := json.Marshal(tool)
 				if err != nil {
@@ -254,7 +256,7 @@ func (p *Provider) GenerateStream(ctx context.Context, req *agent.GenerateStream
 					return
 				}
 
-				var toolParam openai.ChatCompletionToolParam
+				var toolParam openai.ChatCompletionToolUnionParam
 				if err := json.Unmarshal(toolJSON, &toolParam); err != nil {
 					yield(nil, fmt.Errorf("failed to unmarshal tool param: %w", err))
 					return
@@ -268,44 +270,29 @@ func (p *Provider) GenerateStream(ctx context.Context, req *agent.GenerateStream
 		stream := p.client.Chat.Completions.NewStreaming(ctx, params)
 		defer stream.Close()
 
-		finalMsg := message.NewMessage(message.RoleAssistant, "")
-		var accumulatedToolCalls []message.ToolCall
-
+		acc := openai.ChatCompletionAccumulator{}
 		for stream.Next() {
 			event := stream.Current()
 			if len(event.Choices) == 0 {
 				continue
 			}
-			choice := event.Choices[0]
 
+			acc.AddChunk(event)
+
+			choice := event.Choices[0]
+			response := &agent.GenerateResponse{
+				Message: message.NewEmptyMessage(message.RoleAssistant),
+			}
 			if choice.Delta.Content != "" {
-				finalMsg.AppendText(choice.Delta.Content)
-				chunk := message.NewMessage(message.RoleAssistant, choice.Delta.Content)
-				chunk.Completed = false
-				if !yield(chunk, nil) {
-					return
-				}
+				response.Message.SetText(choice.Delta.Content)
 			}
 
-			if len(choice.Delta.ToolCalls) > 0 {
-				for _, tc := range choice.Delta.ToolCalls {
-					idx := tc.Index
-					for len(accumulatedToolCalls) <= int(idx) {
-						accumulatedToolCalls = append(accumulatedToolCalls, message.ToolCall{})
-					}
-					if tc.ID != "" {
-						accumulatedToolCalls[idx].ID = tc.ID
-					}
-					if tc.Function.Name != "" {
-						accumulatedToolCalls[idx].Name = tc.Function.Name
-					}
-					if tc.Function.Arguments != "" {
-						var args map[string]any
-						if err := json.Unmarshal([]byte(tc.Function.Arguments), &args); err == nil {
-							accumulatedToolCalls[idx].Args = args
-						}
-					}
-				}
+			if choice.FinishReason != "" {
+				response.Message.FinishReason = choice.FinishReason
+			}
+
+			if !yield(response, nil) {
+				return
 			}
 		}
 
@@ -314,19 +301,34 @@ func (p *Provider) GenerateStream(ctx context.Context, req *agent.GenerateStream
 			return
 		}
 
-		if len(accumulatedToolCalls) > 0 {
-			finalMsg.ToolCalls = accumulatedToolCalls
+		finalMsg := &agent.GenerateResponse{
+			Message: message.NewEmptyMessage(message.RoleAssistant),
 		}
-		finalMsg.Completed = true
+		tcs := acc.Choices[0].Message.ToolCalls
+		finalMsg.Message.ToolCalls = make([]message.ToolCall, len(tcs))
+		finalMsg.Message.Completed = true
+
+		for i, call := range tcs {
+			var args map[string]any
+			if err := json.Unmarshal([]byte(call.Function.Arguments), &args); err != nil {
+				yield(nil, fmt.Errorf("failed to parse tool arguments: %w", err))
+				return
+			}
+			finalMsg.Message.ToolCalls[i] = message.ToolCall{
+				ID:   call.ID,
+				Name: call.Function.Name,
+				Args: args,
+			}
+		}
 		yield(finalMsg, nil)
 	}
 }
 
-func encodeToolCalls(calls []message.ToolCall) ([]openai.ChatCompletionMessageToolCallParam, error) {
+func encodeToolCalls(calls []message.ToolCall) ([]openai.ChatCompletionMessageToolCallUnionParam, error) {
 	if len(calls) == 0 {
 		return nil, nil
 	}
-	params := make([]openai.ChatCompletionMessageToolCallParam, 0, len(calls))
+	params := make([]openai.ChatCompletionMessageToolCallUnionParam, 0, len(calls))
 	for _, tc := range calls {
 		args := tc.Args
 		if args == nil {
@@ -336,11 +338,13 @@ func encodeToolCalls(calls []message.ToolCall) ([]openai.ChatCompletionMessageTo
 		if err != nil {
 			return nil, err
 		}
-		params = append(params, openai.ChatCompletionMessageToolCallParam{
-			ID: tc.ID,
-			Function: openai.ChatCompletionMessageToolCallFunctionParam{
-				Name:      tc.Name,
-				Arguments: string(raw),
+		params = append(params, openai.ChatCompletionMessageToolCallUnionParam{
+			OfFunction: &openai.ChatCompletionMessageFunctionToolCallParam{
+				ID: tc.ID,
+				Function: openai.ChatCompletionMessageFunctionToolCallFunctionParam{
+					Name:      tc.Name,
+					Arguments: string(raw),
+				},
 			},
 		})
 	}

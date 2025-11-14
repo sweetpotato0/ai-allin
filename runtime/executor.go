@@ -73,7 +73,7 @@ func (e *AgentExecutor) Execute(ctx context.Context, req *Request) (*TurnResult,
 
 	return &TurnResult{
 		SessionID:   req.SessionID,
-		Output:      output,
+		Output:      output.Text(),
 		Messages:    messages,
 		LastMessage: last,
 		Duration:    duration,

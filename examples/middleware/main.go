@@ -97,7 +97,7 @@ func loggerExample() {
 		return
 	}
 
-	fmt.Printf("Final response: %s\n", result)
+	fmt.Printf("Final response: %s\n", result.Text())
 }
 
 func validationExample() {
@@ -138,7 +138,7 @@ func validationExample() {
 	if err != nil {
 		fmt.Printf("Error: %v\n", err)
 	} else {
-		fmt.Printf("Success: %s\n", result)
+		fmt.Printf("Success: %s\n", result.Text())
 	}
 
 	// Invalid input (empty)
@@ -179,7 +179,7 @@ func errorHandlingExample() {
 	if err != nil {
 		fmt.Printf("Error handled: %v\n", err)
 	} else {
-		fmt.Printf("Result: %s\n", result)
+		fmt.Printf("Result: %s\n", result.Text())
 	}
 }
 
@@ -209,7 +209,7 @@ func enrichmentExample() {
 		return
 	}
 
-	fmt.Printf("Result: %s\n", result)
+	fmt.Printf("Result: %s\n", result.Text())
 }
 
 func rateLimitingExample() {
@@ -247,7 +247,7 @@ func rateLimitingExample() {
 	if err != nil {
 		fmt.Printf("Error: %v\n", err)
 	} else {
-		fmt.Printf("Success: %s\n", result)
+		fmt.Printf("Success: %s\n", result.Text())
 	}
 }
 
@@ -294,5 +294,5 @@ func combinedMiddlewaresExample() {
 		return
 	}
 
-	fmt.Printf("Final result: %s\n", result)
+	fmt.Printf("Final result: %s\n", result.Text())
 }

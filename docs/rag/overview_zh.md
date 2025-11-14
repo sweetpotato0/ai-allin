@@ -110,6 +110,7 @@ func main() {
 - **切片与重排**：可注入 `agentic.WithChunker(...)` 或 `agentic.WithReranker(...)` 调整切片策略与重排算法。
 - **自带检索器**：若已有自研搜索服务，可借助 `agentic.WithRetriever(...)` 直接注入，跳过默认的 chunk/embed 流程。
 - **提示词**：用 `WithPlannerPrompt` / `WithQueryPrompt` / `WithSynthesisPrompt` / `WithCriticPrompt` 覆盖各角色的系统提示。
+- **查询策略**：通过 `WithQueryRetries` / `WithQueryMaxResults` 调整 researcher LLM 的重试次数、输出数量。
 - **回答兜底**：通过 `WithMinEvidenceCount(n)` 限制必须在有足够证据时才执行，并使用 `WithNoAnswerMessage(...)` 自定义无结果提示，阻止模型在没有依据时胡乱作答。
 - **配置预设**：利用 `agentic.WithRetrievalPreset(agentic.RetrievalPresetSimple|Balanced|Hybrid)` 一次性套用多组检索参数，避免手动逐个调选项。
 - **审稿智能体**：通过 `WithCritic(false)` 关闭，或给 `Clients.Critic` 指定不同模型。

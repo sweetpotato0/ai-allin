@@ -111,6 +111,7 @@ func main() {
 - **Bring your own retriever** – inject any retrieval implementation (hybrid search, external service, etc.) via `agentic.WithRetriever(...)`.
 - **Retrieval presets** – call `agentic.WithRetrievalPreset(agentic.RetrievalPresetSimple|Balanced|Hybrid)` to flip multiple tuning knobs at once instead of setting every field manually.
 - **Prompts** – override planner/query/writer/critic prompts with `WithPlannerPrompt`, `WithQueryPrompt`, `WithSynthesisPrompt`, and `WithCriticPrompt`.
+- **Query agent** – use `WithQueryRetries`, `WithQueryMaxResults`, and `WithQueryCaching` to control how the researcher LLM generates and caches search terms.
 - **Answer safety** – demand supporting evidence with `WithMinEvidenceCount(n)` and customise the fallback `WithNoAnswerMessage(...)` so the writer refuses to answer when nothing relevant was found.
 - **Critic agent** – disable it via `WithCritic(false)` or supply a different LLM client through `Clients.Critic`.
 - **Graph extensions** – the underlying `graph.Graph` is stored on the pipeline; you can fork the package or wrap the pipeline to inject extra nodes (tool calls, structured logging, telemetry, etc.).

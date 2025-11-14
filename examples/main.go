@@ -77,7 +77,7 @@ func basicAgentExample() {
 		return
 	}
 
-	fmt.Printf("Agent response: %s\n", result)
+	fmt.Printf("Agent response: %s\n", result.Text())
 }
 
 func agentWithToolsExample() {

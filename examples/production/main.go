@@ -18,12 +18,12 @@ func NewMockLLMProvider() *MockLLMProvider {
 	return &MockLLMProvider{}
 }
 
-func (m *MockLLMProvider) Generate(ctx context.Context, req *agent.GenerateRequest) (*agent.GenerateResponse, error) {
+func (m *MockLLMProvider) Generate(ctx context.Context, req *agent.GenerateRequest) (*message.Message, error) {
 	// 返回一个简单的模拟响应
 	response := "感谢您的咨询！我已经查看了您的信息。根据您的问题，我会为您提供最佳解决方案。"
 	msg := message.NewMessage(message.RoleAssistant, response)
 	msg.Completed = true
-	return &agent.GenerateResponse{Message: msg}, nil
+	return &message.Message{Message: msg}, nil
 }
 
 func (m *MockLLMProvider) SetTemperature(temp float64) {}

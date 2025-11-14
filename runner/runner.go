@@ -45,7 +45,12 @@ func (r *runner) Run(ctx context.Context, ag *agent.Agent, input string) (string
 		return "", ctx.Err()
 	}
 
-	return ag.Run(ctx, input)
+	msg, err := ag.Run(ctx, input)
+	if err != nil {
+		return "", err
+	}
+
+	return msg.Text(), nil
 }
 
 // RunGraph executes a graph workflow

@@ -57,7 +57,7 @@ func openaiProviderExample() {
 		return
 	}
 
-	fmt.Printf("OpenAI Response: %s\n", result)
+	fmt.Printf("OpenAI Response: %s\n", result.Text())
 }
 
 func claudeProviderExample() {
@@ -90,7 +90,7 @@ func claudeProviderExample() {
 		return
 	}
 
-	fmt.Printf("Claude Response: %s\n", result)
+	fmt.Printf("Claude Response: %s\n", result.Text())
 }
 
 func providerConfigurationExample() {

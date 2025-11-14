@@ -238,9 +238,9 @@ func (a *Agent) RestoreMessages(messages []*message.Message) {
 }
 
 // Run executes the agent with the given input
-func (a *Agent) Run(ctx context.Context, input string) (string, error) {
+func (a *Agent) Run(ctx context.Context, input string) (*message.Message, error) {
 	if err := a.ensureToolProviders(ctx); err != nil {
-		return "", err
+		return nil, err
 	}
 
 	// Create middleware context
@@ -281,28 +281,24 @@ func (a *Agent) Run(ctx context.Context, input string) (string, error) {
 				Messages: a.ctx.GetMessages(),
 				Tools:    toolSchemas,
 			}
-			genResp, err := a.llm.Generate(mwCtx.Context(), req)
+			resp, err := a.llm.Generate(mwCtx.Context(), req)
 			if err != nil {
 				return fmt.Errorf("LLM generation failed: %w", err)
 			}
-			if genResp == nil || genResp.Message == nil {
-				return fmt.Errorf("LLM generation returned empty response")
-			}
-			response := genResp.Message
 
-			a.AddMessage(response)
-			mwCtx.Response = response
+			a.AddMessage(resp.Message)
+			mwCtx.Response = resp.Message
 
 			// Check if there are tool calls
-			if len(response.ToolCalls) == 0 {
+			if len(resp.Message.ToolCalls) == 0 {
 				// No tool calls, return the response
 				if a.enableMemory && a.memory != nil {
 					// Store conversation in memory
-					conversationContent := fmt.Sprintf("User: %s\nAssistant: %s", input, response.Text())
+					conversationContent := fmt.Sprintf("User: %s\nAssistant: %s", input, resp.Message.Text())
 					mem := &memory.Memory{
 						ID:       memory.GenerateMemoryID(),
 						Content:  conversationContent,
-						Metadata: map[string]any{"input": input, "response": response.Text()},
+						Metadata: map[string]any{"input": input, "response": resp.Message.Text()},
 					}
 					a.memory.AddMemory(mwCtx.Context(), mem)
 				}
@@ -310,7 +306,7 @@ func (a *Agent) Run(ctx context.Context, input string) (string, error) {
 			}
 
 			// Execute tool calls
-			for _, toolCall := range response.ToolCalls {
+			for _, toolCall := range resp.Message.ToolCalls {
 				result, err := a.tools.Execute(mwCtx.Context(), toolCall.Name, toolCall.Args)
 				if err != nil {
 					result = fmt.Sprintf("Error executing tool %s: %v", toolCall.Name, err)
@@ -329,18 +325,18 @@ func (a *Agent) Run(ctx context.Context, input string) (string, error) {
 	})
 
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
 	if mwCtx.Response != nil {
-		return mwCtx.Response.Text(), nil
+		return mwCtx.Response, nil
 	}
 
-	return "", fmt.Errorf("no response generated")
+	return nil, fmt.Errorf("no response generated")
 }
 
 // Stream executes the agent with streaming responses
-func (a *Agent) Stream(ctx context.Context, input string, callback func(string) error) error {
+func (a *Agent) Stream(ctx context.Context, input string, callback func(*message.Message) error) error {
 	// This is a placeholder for streaming implementation
 	// In a real implementation, this would stream tokens as they're generated
 	result, err := a.Run(ctx, input)

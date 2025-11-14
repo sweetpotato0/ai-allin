@@ -71,7 +71,7 @@ func openaiExample(ctx context.Context) {
 		return
 	}
 
-	fmt.Printf("Response: %s\n", result)
+	fmt.Printf("Response: %s\n", result.Text())
 }
 
 func claudeExample(ctx context.Context) {
@@ -96,7 +96,7 @@ func claudeExample(ctx context.Context) {
 		return
 	}
 
-	fmt.Printf("Response: %s\n", result)
+	fmt.Printf("Response: %s\n", result.Text())
 }
 
 func groqExample(ctx context.Context) {
@@ -121,7 +121,7 @@ func groqExample(ctx context.Context) {
 		return
 	}
 
-	fmt.Printf("Response: %s\n", result)
+	fmt.Printf("Response: %s\n", result.Text())
 }
 
 func cohereExample(ctx context.Context) {
@@ -146,7 +146,7 @@ func cohereExample(ctx context.Context) {
 		return
 	}
 
-	fmt.Printf("Response: %s\n", result)
+	fmt.Printf("Response: %s\n", result.Text())
 }
 
 func geminiExample(ctx context.Context) {
@@ -171,7 +171,7 @@ func geminiExample(ctx context.Context) {
 		return
 	}
 
-	fmt.Printf("Response: %s\n", result)
+	fmt.Printf("Response: %s\n", result.Text())
 }
 
 func providerSwitchingExample(ctx context.Context) {

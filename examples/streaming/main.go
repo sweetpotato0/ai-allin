@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"strings"
 
 	"github.com/sweetpotato0/ai-allin/agent"
 	"github.com/sweetpotato0/ai-allin/contrib/provider/claude"
@@ -55,21 +54,18 @@ func openaiStreamingExample() {
 	)
 
 	// Create a streaming callback that prints tokens as they arrive
-	tokenBuffer := strings.Builder{}
-	callback := func(token string) error {
-		tokenBuffer.WriteString(token)
-		fmt.Print(token) // Print each token as it arrives
+	callback := func(msg *message.Message) error {
 		return nil
 	}
 
 	fmt.Print("Agent: ")
-	result, err := ag.RunStream(ctx, "Tell me a fun fact about Go programming language", callback)
-	if err != nil {
-		fmt.Printf("\nError: %v\n", err)
-		return
+	seq := ag.RunStream(ctx, "Tell me a fun fact about Go programming language", callback)
+	for msg, err := range seq {
+		if err != nil {
+			break
+		}
+		fmt.Print(msg.Text())
 	}
-
-	fmt.Printf("\n\nFinal result: %s\n", result)
 }
 
 func claudeStreamingExample() {
@@ -96,30 +92,29 @@ func claudeStreamingExample() {
 
 	// Create a streaming callback that counts tokens
 	tokenCount := 0
-	callback := func(token string) error {
+	callback := func(msg *message.Message) error {
 		tokenCount++
-		fmt.Print(token) // Print each token as it arrives
 		return nil
 	}
 
 	fmt.Print("Agent: ")
-	result, err := ag.RunStream(ctx, "Explain quantum computing in 2 sentences", callback)
-	if err != nil {
-		fmt.Printf("\nError: %v\n", err)
-		return
+	seq := ag.RunStream(ctx, "Explain quantum computing in 2 sentences", callback)
+	for msg, err := range seq {
+		if err != nil {
+			break
+		}
+		fmt.Print(msg.Text())
 	}
 
-	fmt.Printf("\n\nTotal tokens received: %d\n", tokenCount)
-	fmt.Printf("Final result: %s\n", result)
 }
 
 // MockStreamingClient demonstrates fallback behavior when streaming is not supported
 type MockStreamingClient struct{}
 
-func (m *MockStreamingClient) Generate(ctx context.Context, req *agent.GenerateRequest) (*agent.GenerateResponse, error) {
+func (m *MockStreamingClient) Generate(ctx context.Context, req *agent.GenerateRequest) (*message.Message, error) {
 	msg := message.NewMessage(message.RoleAssistant, "This is a mock response without streaming support.")
 	msg.Completed = true
-	return &agent.GenerateResponse{Message: msg}, nil
+	return msg, nil
 }
 
 func (m *MockStreamingClient) SetTemperature(float64) {}

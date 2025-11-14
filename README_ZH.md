@@ -61,13 +61,13 @@ func main() {
         agent.WithProvider(llm),
     )
 
-    // 运行智能体
-    response, err := ag.Run(context.Background(), "What is AI?")
+    // 运行智能体；Run 现在返回 *message.Message，可读取更多元数据
+    resp, err := ag.Run(context.Background(), "What is AI?")
     if err != nil {
         panic(err)
     }
 
-    println(response)
+    println(resp.Text())
 }
 ```
 

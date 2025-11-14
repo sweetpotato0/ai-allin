@@ -78,6 +78,8 @@ func New(config *Config) *Provider {
 	}
 }
 
+var _ agent.LLMClient = (*Provider)(nil)
+
 // Generate implements agent.LLMClient interface
 func (p *Provider) Generate(ctx context.Context, req *agent.GenerateRequest) (*agent.GenerateResponse, error) {
 	if req == nil {
@@ -206,7 +208,7 @@ func (p *Provider) SetModel(model string) {
 }
 
 // GenerateStream implements agent.StreamLLMClient interface for streaming responses
-func (p *Provider) GenerateStream(ctx context.Context, req *agent.GenerateStreamRequest) iter.Seq2[*message.Message, error] {
+func (p *Provider) GenerateStream(ctx context.Context, req *agent.GenerateRequest) iter.Seq2[*message.Message, error] {
 	return func(yield func(*message.Message, error) bool) {
 		if req == nil {
 			yield(nil, fmt.Errorf("stream request cannot be nil"))
