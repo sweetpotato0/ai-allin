@@ -1,18 +1,19 @@
 package gemini
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
+	"sync"
+
+	"iter"
+
+	"github.com/google/generative-ai-go/genai"
+	"google.golang.org/api/iterator"
+	"google.golang.org/api/option"
 
 	"github.com/sweetpotato0/ai-allin/agent"
 	"github.com/sweetpotato0/ai-allin/message"
 )
-
-const geminiAPIURL = "https://generativelanguage.googleapis.com/v1/models"
 
 // Config holds Gemini provider configuration
 type Config struct {
@@ -32,12 +33,16 @@ func DefaultConfig(apiKey string) *Config {
 	}
 }
 
-var _ agent.LLMClient = (*Provider)(nil)
+var (
+	_ agent.StreamLLMClient = (*Provider)(nil)
+)
 
 // Provider implements the LLMClient interface for Google Gemini
 type Provider struct {
 	config *Config
-	client *http.Client
+
+	mu     sync.Mutex
+	client *genai.Client
 }
 
 // New creates a new Gemini provider
@@ -52,41 +57,7 @@ func New(config *Config) *Provider {
 
 	return &Provider{
 		config: config,
-		client: &http.Client{},
 	}
-}
-
-// geminiMessage represents a message in Gemini API format
-type geminiMessage struct {
-	Role  string `json:"role"`
-	Parts []struct {
-		Text string `json:"text"`
-	} `json:"parts"`
-}
-
-// geminiRequest represents a Gemini API request
-type geminiRequest struct {
-	Contents    []geminiMessage `json:"contents"`
-	MaxTokens   int             `json:"max_tokens,omitempty"`
-	Temperature float32         `json:"temperature,omitempty"`
-}
-
-// geminiResponse represents a Gemini API response
-type geminiResponse struct {
-	Candidates []struct {
-		Content struct {
-			Parts []struct {
-				Text string `json:"text"`
-			} `json:"parts"`
-		} `json:"content"`
-	} `json:"candidates"`
-	Error *geminiError `json:"error,omitempty"`
-}
-
-// geminiError represents an error in Gemini API response
-type geminiError struct {
-	Message string `json:"message"`
-	Code    int    `json:"code"`
 }
 
 // Generate implements agent.LLMClient interface
@@ -98,83 +69,97 @@ func (p *Provider) Generate(ctx context.Context, req *agent.GenerateRequest) (*a
 		return nil, fmt.Errorf("generate request cannot be nil")
 	}
 
-	// Convert messages to Gemini format
-	geminiMessages := make([]geminiMessage, len(req.Messages))
-	for i, msg := range req.Messages {
-		geminiMessages[i] = geminiMessage{
-			Role: string(msg.Role),
-			Parts: []struct {
-				Text string `json:"text"`
-			}{
-				{Text: msg.Text()},
-			},
+	model, err := p.ensureModel(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	contents := toGeminiContents(req.Messages)
+	if len(contents) == 0 {
+		return nil, fmt.Errorf("no messages provided")
+	}
+
+	session := model.StartChat()
+	if len(contents) > 1 {
+		session.History = append(session.History, contents[:len(contents)-1]...)
+	}
+	last := contents[len(contents)-1]
+	if len(last.Parts) == 0 {
+		return nil, fmt.Errorf("last message has no content")
+	}
+
+	resp, err := session.SendMessage(ctx, last.Parts...)
+	if err != nil {
+		return nil, fmt.Errorf("Gemini generate call failed: %w", err)
+	}
+	return convertResponse(resp)
+}
+
+// GenerateStream implements agent.StreamLLMClient for Gemini.
+func (p *Provider) GenerateStream(ctx context.Context, req *agent.GenerateRequest) iter.Seq2[*agent.GenerateResponse, error] {
+	return func(yield func(*agent.GenerateResponse, error) bool) {
+		if p.config.APIKey == "" {
+			yield(nil, fmt.Errorf("Gemini API key not configured"))
+			return
 		}
+		if req == nil {
+			yield(nil, fmt.Errorf("stream request cannot be nil"))
+			return
+		}
+
+		model, err := p.ensureModel(ctx)
+		if err != nil {
+			yield(nil, err)
+			return
+		}
+
+		contents := toGeminiContents(req.Messages)
+		if len(contents) == 0 {
+			yield(nil, fmt.Errorf("no messages provided"))
+			return
+		}
+
+		session := model.StartChat()
+		if len(contents) > 1 {
+			session.History = append(session.History, contents[:len(contents)-1]...)
+		}
+		last := contents[len(contents)-1]
+		if len(last.Parts) == 0 {
+			yield(nil, fmt.Errorf("last message has no content"))
+			return
+		}
+
+		stream := session.SendMessageStream(ctx, last.Parts...)
+		for {
+			resp, err := stream.Next()
+			if err == iterator.Done {
+				break
+			}
+			if err != nil {
+				yield(nil, fmt.Errorf("Gemini streaming error: %w", err))
+				return
+			}
+			chunk, ok := chunkResponse(resp)
+			if !ok {
+				continue
+			}
+			if !yield(chunk, nil) {
+				return
+			}
+		}
+
+		final := stream.MergedResponse()
+		if final == nil {
+			yield(nil, fmt.Errorf("Gemini streaming ended without final response"))
+			return
+		}
+		genResp, err := convertResponse(final)
+		if err != nil {
+			yield(nil, err)
+			return
+		}
+		yield(genResp, nil)
 	}
-
-	// Create request
-	payload := geminiRequest{
-		Contents:    geminiMessages,
-		MaxTokens:   p.config.MaxTokens,
-		Temperature: p.config.Temperature,
-	}
-
-	// Marshal request
-	reqBody, err := json.Marshal(payload)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal request: %w", err)
-	}
-
-	// Create HTTP request URL
-	url := fmt.Sprintf("%s/%s:generateContent?key=%s", geminiAPIURL, p.config.Model, p.config.APIKey)
-	httpReq, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(reqBody))
-	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
-	}
-
-	// Set headers
-	httpReq.Header.Set("Content-Type", "application/json")
-
-	// Send request
-	httpResp, err := p.client.Do(httpReq)
-	if err != nil {
-		return nil, fmt.Errorf("failed to send request: %w", err)
-	}
-	defer httpResp.Body.Close()
-
-	// Read response
-	respBody, err := io.ReadAll(httpResp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read response: %w", err)
-	}
-
-	// Check status code
-	if httpResp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("Gemini API error (status %d): %s", httpResp.StatusCode, string(respBody))
-	}
-
-	// Unmarshal response
-	var resp geminiResponse
-	if err := json.Unmarshal(respBody, &resp); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal response: %w", err)
-	}
-
-	// Check for API error
-	if resp.Error != nil {
-		return nil, fmt.Errorf("Gemini API error (code %d): %s", resp.Error.Code, resp.Error.Message)
-	}
-
-	// Extract message
-	if len(resp.Candidates) == 0 {
-		return nil, fmt.Errorf("no candidates in response")
-	}
-
-	if len(resp.Candidates[0].Content.Parts) == 0 {
-		return nil, fmt.Errorf("no content parts in candidate")
-	}
-
-	msg := message.NewMessage(message.RoleAssistant, resp.Candidates[0].Content.Parts[0].Text)
-	msg.Completed = true
-	return &agent.GenerateResponse{Message: msg}, nil
 }
 
 // SetTemperature updates the temperature setting
@@ -190,4 +175,133 @@ func (p *Provider) SetMaxTokens(max int64) {
 // SetModel updates the model
 func (p *Provider) SetModel(model string) {
 	p.config.Model = model
+}
+
+func (p *Provider) ensureModel(ctx context.Context) (*genai.GenerativeModel, error) {
+	client, err := p.ensureClient(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	model := client.GenerativeModel(p.config.Model)
+	if p.config.MaxTokens > 0 {
+		mt := int32(p.config.MaxTokens)
+		model.GenerationConfig.MaxOutputTokens = &mt
+	}
+	if p.config.Temperature > 0 {
+		temp := p.config.Temperature
+		model.GenerationConfig.Temperature = &temp
+	}
+	return model, nil
+}
+
+func (p *Provider) ensureClient(ctx context.Context) (*genai.Client, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	if p.client != nil {
+		return p.client, nil
+	}
+
+	client, err := genai.NewClient(ctx, option.WithAPIKey(p.config.APIKey))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create Gemini client: %w", err)
+	}
+
+	p.client = client
+	return p.client, nil
+}
+
+func toGeminiContents(msgs []*message.Message) []*genai.Content {
+	contents := make([]*genai.Content, 0, len(msgs))
+	for _, msg := range msgs {
+		if msg == nil || len(msg.Content.Parts) == 0 {
+			continue
+		}
+
+		parts := make([]genai.Part, 0, len(msg.Content.Parts))
+		for _, part := range msg.Content.Parts {
+			if part.Text == "" {
+				continue
+			}
+			parts = append(parts, genai.Text(part.Text))
+		}
+		if len(parts) == 0 {
+			continue
+		}
+
+		contents = append(contents, &genai.Content{
+			Role:  mapRole(msg.Role),
+			Parts: parts,
+		})
+	}
+	return contents
+}
+
+func mapRole(role message.Role) string {
+	switch role {
+	case message.RoleAssistant:
+		return "model"
+	default:
+		return "user"
+	}
+}
+
+func convertResponse(resp *genai.GenerateContentResponse) (*agent.GenerateResponse, error) {
+	cand := firstCandidate(resp)
+	if cand == nil {
+		return nil, fmt.Errorf("empty response from Gemini")
+	}
+
+	msg := message.NewEmptyMessage(message.RoleAssistant)
+	msg.FinishReason = cand.FinishReason.String()
+	appendCandidateParts(msg, cand)
+	if len(msg.Content.Parts) == 0 && len(msg.ToolCalls) == 0 {
+		return nil, fmt.Errorf("Gemini candidate missing content")
+	}
+	if cand.FinishReason != genai.FinishReasonUnspecified {
+		msg.Completed = true
+	}
+
+	return &agent.GenerateResponse{Message: msg}, nil
+}
+
+func chunkResponse(resp *genai.GenerateContentResponse) (*agent.GenerateResponse, bool) {
+	cand := firstCandidate(resp)
+	if cand == nil || (cand.Content == nil && cand.FinishReason == genai.FinishReasonUnspecified) {
+		return nil, false
+	}
+	msg := message.NewEmptyMessage(message.RoleAssistant)
+	msg.FinishReason = cand.FinishReason.String()
+	appendCandidateParts(msg, cand)
+	if len(msg.Content.Parts) == 0 && len(msg.ToolCalls) == 0 {
+		return nil, false
+	}
+	return &agent.GenerateResponse{Message: msg}, true
+}
+
+func appendCandidateParts(msg *message.Message, cand *genai.Candidate) {
+	if cand == nil || cand.Content == nil {
+		return
+	}
+	for _, part := range cand.Content.Parts {
+		switch p := part.(type) {
+		case genai.Text:
+			msg.Content.Parts = append(msg.Content.Parts, message.Part{Text: string(p)})
+		case genai.FunctionCall:
+			index := len(msg.ToolCalls) + 1
+			msg.ToolCalls = append(msg.ToolCalls, message.ToolCall{
+				ID:   fmt.Sprintf("gemini-call-%d", index),
+				Name: p.Name,
+				Args: p.Args,
+			})
+		}
+	}
+}
+
+func firstCandidate(resp *genai.GenerateContentResponse) *genai.Candidate {
+	if resp == nil || len(resp.Candidates) == 0 {
+		return nil
+	}
+	return resp.Candidates[0]
 }

@@ -73,8 +73,6 @@ go run examples/allproviders/main.go
 - **contrib/provider/** - LLM提供商实现
   - **contrib/provider/openai/** - OpenAI API集成，使用官方 `openai-go` SDK
   - **contrib/provider/claude/** - Anthropic Claude集成，使用官方 `anthropic-sdk-go` SDK
-  - **contrib/provider/groq/** - Groq API集成（mixtral-8x7b-32768）
-  - **contrib/provider/cohere/** - Cohere API集成，支持企业级LLM
   - **contrib/provider/gemini/** - Google Gemini集成
 
 ### 设计模式
@@ -255,36 +253,6 @@ agent := agent.New(
 )
 ```
 
-#### Groq提供商
-
-```go
-import "github.com/sweetpotato0/ai-allin/contrib/provider/groq"
-
-config := groq.DefaultConfig(apiKey)
-config.Model = "mixtral-8x7b-32768"  // 快速推理
-provider := groq.New(config)
-
-agent := agent.New(
-    agent.WithProvider(provider),
-    agent.WithSystemPrompt("你是一个有帮助的助手"),
-)
-```
-
-#### Cohere提供商
-
-```go
-import "github.com/sweetpotato0/ai-allin/contrib/provider/cohere"
-
-config := cohere.DefaultConfig(apiKey)
-config.Model = "command"
-provider := cohere.New(config)
-
-agent := agent.New(
-    agent.WithProvider(provider),
-    agent.WithSystemPrompt("你是一个有帮助的助手"),
-)
-```
-
 #### Gemini提供商
 
 ```go
@@ -388,8 +356,6 @@ Context模块已集成到Agent中，用于自动消息历史管理：
 ✅ 基于文档的MongoDB存储后端
 ✅ OpenAI提供商（使用官方openai-go SDK）
 ✅ Claude提供商（使用官方anthropic-sdk-go SDK）
-✅ 用于快速推理的Groq提供商（mixtral-8x7b-32768）
-✅ 用于企业级LLM集成的Cohere提供商
 ✅ Google生成AI的Gemini提供商
 ✅ 并行、顺序和条件任务运行器
 ✅ 展示所有功能的综合示例

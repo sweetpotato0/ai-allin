@@ -14,7 +14,7 @@ log_level = "info"
 # LLM配置
 # ================================
 [llm]
-# 支持的提供商: openai, claude, groq, cohere, gemini
+# 支持的提供商: openai, claude, gemini
 provider = "openai"
 model = "gpt-4"
 temperature = 0.6

@@ -6,7 +6,7 @@ A comprehensive, production-ready Go framework for building AI agents with strea
 
 ## Features
 
-- **Multi-Provider LLM Support**: OpenAI, Anthropic Claude, Groq, Cohere, Google Gemini
+- **Multi-Provider LLM Support**: OpenAI, Anthropic Claude, Google Gemini
 - **Streaming Response Support**: Real-time streaming for all LLM providers
 - **Agent Framework**: Configurable agents with middleware, prompts, and memory
 - **Tool Integration**: Register and execute tools/functions

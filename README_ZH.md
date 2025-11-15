@@ -6,7 +6,7 @@
 
 ## 特性
 
-- **多提供商 LLM 支持**: OpenAI、Anthropic Claude、Groq、Cohere、Google Gemini
+- **多提供商 LLM 支持**: OpenAI、Anthropic Claude、Google Gemini
 - **流式响应支持**: 所有 LLM 提供商的实时流式输出
 - **Agent 框架**: 支持中间件、提示词和记忆的可配置智能体
 - **工具集成**: 注册和执行工具/函数

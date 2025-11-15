@@ -7,9 +7,7 @@ import (
 
 	"github.com/sweetpotato0/ai-allin/agent"
 	"github.com/sweetpotato0/ai-allin/contrib/provider/claude"
-	"github.com/sweetpotato0/ai-allin/contrib/provider/cohere"
 	"github.com/sweetpotato0/ai-allin/contrib/provider/gemini"
-	"github.com/sweetpotato0/ai-allin/contrib/provider/groq"
 	"github.com/sweetpotato0/ai-allin/contrib/provider/openai"
 )
 
@@ -28,23 +26,13 @@ func main() {
 	fmt.Println("---------------------------")
 	claudeExample(ctx)
 
-	// Example 3: Groq Provider
-	fmt.Println("\nExample 3: Groq Provider")
-	fmt.Println("------------------------")
-	groqExample(ctx)
-
-	// Example 4: Cohere Provider
-	fmt.Println("\nExample 4: Cohere Provider")
-	fmt.Println("---------------------------")
-	cohereExample(ctx)
-
-	// Example 5: Gemini Provider
-	fmt.Println("\nExample 5: Gemini Provider")
+	// Example 3: Gemini Provider
+	fmt.Println("\nExample 3: Gemini Provider")
 	fmt.Println("---------------------------")
 	geminiExample(ctx)
 
-	// Example 6: Provider Switching
-	fmt.Println("\nExample 6: Dynamic Provider Switching")
+	// Example 4: Provider Switching
+	fmt.Println("\nExample 4: Dynamic Provider Switching")
 	fmt.Println("-------------------------------------")
 	providerSwitchingExample(ctx)
 }
@@ -86,56 +74,6 @@ func claudeExample(ctx context.Context) {
 
 	ag := agent.New(
 		agent.WithName("Claude Agent"),
-		agent.WithProvider(provider),
-		agent.WithSystemPrompt("You are a helpful assistant."),
-	)
-
-	result, err := ag.Run(ctx, "What is 2+2?")
-	if err != nil {
-		fmt.Printf("Error: %v\n", err)
-		return
-	}
-
-	fmt.Printf("Response: %s\n", result.Text())
-}
-
-func groqExample(ctx context.Context) {
-	apiKey := os.Getenv("GROQ_API_KEY")
-	if apiKey == "" {
-		fmt.Println("⚠️  GROQ_API_KEY not set - skipping")
-		return
-	}
-
-	config := groq.DefaultConfig(apiKey)
-	provider := groq.New(config)
-
-	ag := agent.New(
-		agent.WithName("Groq Agent"),
-		agent.WithProvider(provider),
-		agent.WithSystemPrompt("You are a helpful assistant."),
-	)
-
-	result, err := ag.Run(ctx, "What is 2+2?")
-	if err != nil {
-		fmt.Printf("Error: %v\n", err)
-		return
-	}
-
-	fmt.Printf("Response: %s\n", result.Text())
-}
-
-func cohereExample(ctx context.Context) {
-	apiKey := os.Getenv("COHERE_API_KEY")
-	if apiKey == "" {
-		fmt.Println("⚠️  COHERE_API_KEY not set - skipping")
-		return
-	}
-
-	config := cohere.DefaultConfig(apiKey)
-	provider := cohere.New(config)
-
-	ag := agent.New(
-		agent.WithName("Cohere Agent"),
 		agent.WithProvider(provider),
 		agent.WithSystemPrompt("You are a helpful assistant."),
 	)
