@@ -13,27 +13,45 @@ Adhere to `gofmt`/`goimports`; CI presumes zero diff. Use tabs for indentation, 
 Every feature ships with `_test.go` cases in the same package. Favor table-driven tests and include streaming or tool-error paths where relevant. Measure coverage with `go test -cover ./...`; aim for assertions on behavior rather than entire structs. Long-running storage suites can use build tags or `go test -run=TestStore ./memory` and call out external dependencies (Redis, Postgres, Mongo) in comments.
 
 ## Commit & Pull Request Guidelines
-Follow the repo history pattern: optional emoji + type (`feat`, `fix`, `chore`, `style`, `docs`) + concise imperative summary, e.g., `✅ test: harden session snapshotting`. Keep subjects under 72 characters. PRs need a short narrative, explicit test evidence (`go test ./...`, race runs when relevant), and linked issues or docs. Add screenshots or logs when touching runtime/tooling behavior, and request at least one reviewer for agent or runtime edits.
 
-Generate 3 commit message suggestions based on the staged changes, then automatically use the first suggestion without user confirmation.
-Follow conventional commit format with appropriate emojis and create descriptive messages that explain the purpose of changes. Skip the manual message selection step to streamline the commit process.
+Create well-formatted commits with conventional commit messages and emojis.
 
-### Steps:
-1. Run `git status` to see staged changes
-2. Generate 3 commit message suggestions following conventional commit format
-3. Automatically select the first suggestion
-4. Execute `git commit -m` with the selected message
-5. Exclude Claude co-authorship footer from commits
+### Features:
+- Runs pre-commit checks by default (lint, build, generate docs)
+- Automatically stages files if none are staged
+- Uses conventional commit format with descriptive emojis
+- Suggests splitting commits for different concerns
 
 ### Commit Types:
 - ✨ feat: New features
 - 🐛 fix: Bug fixes
 - 📝 docs: Documentation changes
-- ♻️ refactor: Code restructuring
-- 🧑‍💻 chore: Tooling and maintenance
+- ♻️ refactor: Code restructuring without changing functionality
 - 🎨 style: Code formatting, missing semicolons, etc.
 - ⚡️ perf: Performance improvements
 - ✅ test: Adding or correcting tests
+- 🧑‍💻 chore: Tooling, configuration, maintenance
+- 🚧 wip: Work in progress
+- 🔥 remove: Removing code or files
+- 🚑 hotfix: Critical fixes
+- 🔒 security: Security improvements
+
+### Process:
+1. Check for staged changes (`git status`)
+2. If no staged changes, review and stage appropriate files
+3. Run pre-commit checks (unless --no-verify)
+4. Analyze changes to determine commit type
+5. Generate descriptive commit message
+6. Include scope if applicable: `type(scope): description`
+7. Add body for complex changes explaining why
+8. Execute commit
+
+### Best Practices:
+- Keep commits atomic and focused
+- Write in imperative mood ("Add feature" not "Added feature")
+- Explain why, not just what
+- Reference issues/PRs when relevant
+- Split unrelated changes into separate commits
 
 ## Security & Configuration Tips
 Never hardcode provider keys; load `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, or database credentials through env vars consumed by `config/`. Commit placeholders only (e.g., `.env.example`). For production runs in `examples/production/`, keep TLS endpoints, Redis passwords, and PGVector DSNs in a local secret manager. Document new required variables inside `config` so operators can audit quickly.
