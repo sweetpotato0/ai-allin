@@ -9,6 +9,7 @@ import (
 	"github.com/sweetpotato0/ai-allin/rag/document"
 	"github.com/sweetpotato0/ai-allin/rag/embedder"
 	"github.com/sweetpotato0/ai-allin/rag/reranker"
+	"github.com/sweetpotato0/ai-allin/rag/summarizer"
 	"github.com/sweetpotato0/ai-allin/vector"
 )
 
@@ -41,11 +42,12 @@ func WithRerankTopK(k int) Option {
 
 // Retriever coordinates chunking, embedding, similarity search, and reranking.
 type Retriever struct {
-	store    vector.VectorStore
-	embedder embedder.Embedder
-	chunker  chunking.Chunker
-	reranker reranker.Reranker
-	cfg      Config
+	store     vector.VectorStore
+	embedder  embedder.Embedder
+	chunker   chunking.Chunker
+	summaryer summarizer.Summarizer
+	reranker  reranker.Reranker
+	cfg       Config
 
 	mu        sync.RWMutex
 	documents map[string]document.Document
@@ -53,7 +55,7 @@ type Retriever struct {
 }
 
 // New creates a retriever.
-func New(store vector.VectorStore, emb embedder.Embedder, chunker chunking.Chunker, rer reranker.Reranker, opts ...Option) *Retriever {
+func New(store vector.VectorStore, emb embedder.Embedder, chunker chunking.Chunker, summaryer summarizer.Summarizer, rer reranker.Reranker, opts ...Option) *Retriever {
 	cfg := Config{
 		SearchTopK: 8,
 		RerankTopK: 4,
@@ -79,13 +81,22 @@ func (r *Retriever) IndexDocuments(ctx context.Context, docs ...document.Documen
 	}
 
 	for _, doc := range docs {
-		document.EnsureDocumentID(&doc)
+		document.GenDocumentID(doc.Source, doc.Content)
 		chunks, err := r.chunker.Chunk(ctx, doc)
 		if err != nil {
 			return fmt.Errorf("chunk document %s: %w", doc.ID, err)
 		}
 
-		for _, chunk := range chunks {
+		// generate summaries in batch
+		summaries := []document.Summary{}
+		if r.summaryer != nil {
+			summaries, err = r.summaryer.SummarizeChunks(ctx, chunks)
+			if err != nil {
+				return fmt.Errorf("summaryer chunks %s: %w", doc.ID, err)
+			}
+		}
+
+		for i, chunk := range chunks {
 			vec, err := r.embedder.EmbedDocument(ctx, chunk)
 			if err != nil {
 				return fmt.Errorf("embed chunk %s: %w", chunk.ID, err)
@@ -99,8 +110,30 @@ func (r *Retriever) IndexDocuments(ctx context.Context, docs ...document.Documen
 				return fmt.Errorf("store chunk %s: %w", chunk.ID, err)
 			}
 
+			var summaryChunk document.Chunk
+			if len(summaries) != 0 {
+				summaryChunk := chunk
+				summaryChunk.ID = chunk.ID + "_summary"
+				summaryChunk.Content = summaries[i].Summary
+				vec, err = r.embedder.EmbedDocument(ctx, summaryChunk)
+				if err != nil {
+					return fmt.Errorf("embed summary chunk %s: %w", chunk.ID, err)
+				}
+				summary := &vector.Embedding{
+					ID:     chunk.ID,
+					Vector: vec,
+					Text:   summaries[i].Summary,
+				}
+				if err := r.store.AddEmbedding(ctx, summary); err != nil {
+					return fmt.Errorf("store summary chunk %s: %w", chunk.ID, err)
+				}
+			}
+
 			r.mu.Lock()
 			r.chunks[chunk.ID] = chunk.Clone()
+			if len(summaries) == 0 {
+				r.chunks[summaryChunk.ID] = summaryChunk.Clone()
+			}
 			r.documents[doc.ID] = doc.Clone()
 			r.mu.Unlock()
 		}

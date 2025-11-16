@@ -9,8 +9,6 @@ import (
 	"time"
 
 	"github.com/sweetpotato0/ai-allin/agent"
-	"github.com/sweetpotato0/ai-allin/contrib/chunking/markdown"
-	"github.com/sweetpotato0/ai-allin/contrib/chunking/token"
 	"github.com/sweetpotato0/ai-allin/contrib/reranker/cohere"
 	"github.com/sweetpotato0/ai-allin/contrib/reranker/mmr"
 	"github.com/sweetpotato0/ai-allin/contrib/retrieval/hybrid"
@@ -18,6 +16,7 @@ import (
 	"github.com/sweetpotato0/ai-allin/message"
 	"github.com/sweetpotato0/ai-allin/rag/agentic"
 	"github.com/sweetpotato0/ai-allin/rag/embedder"
+	"github.com/sweetpotato0/ai-allin/rag/tokenizer"
 )
 
 func main() {
@@ -27,18 +26,13 @@ func main() {
 	store := inmemory.NewInMemoryVectorStore()
 	baseEmbedder := newKeywordEmbedder()
 
-	mdChunker := markdown.New(
-		markdown.WithFallbackChunker(token.New(token.WithMaxTokens(300), token.WithOverlapTokens(50))),
-		markdown.WithMaxHeadingLevel(3),
-	)
-
 	cohereKey := os.Getenv("COHERE_API_KEY")
 	cohereReranker := cohere.New(cohereKey, cohere.WithFallback(mmr.New()))
 
 	retrievalEngine, err := hybrid.New(
 		store,
+		tokenizer.NewSimpleTokenizer(),
 		embedder.NewVectorAdapter(baseEmbedder),
-		hybrid.WithChunker(mdChunker),
 		hybrid.WithReranker(cohereReranker),
 	)
 	if err != nil {

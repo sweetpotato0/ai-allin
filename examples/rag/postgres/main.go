@@ -11,9 +11,9 @@ import (
 
 	openaisdk "github.com/openai/openai-go/v3"
 	"github.com/sweetpotato0/ai-allin/agent"
-	"github.com/sweetpotato0/ai-allin/contrib/chunking/markdown"
 	openai_embedder "github.com/sweetpotato0/ai-allin/contrib/embedder/openai"
 	"github.com/sweetpotato0/ai-allin/contrib/provider/openai"
+	"github.com/sweetpotato0/ai-allin/contrib/tokenizer/tiktoken"
 	pgvector "github.com/sweetpotato0/ai-allin/contrib/vector/pg"
 	"github.com/sweetpotato0/ai-allin/rag/agentic"
 )
@@ -22,6 +22,7 @@ const (
 	defaultQuestion     = "Give me a concise overview of the repository architecture and how the MCP integration works."
 	defaultDocsDir      = "testdata/cases"
 	defaultPGTable      = "repo_docs"
+	defaultTKModelName  = "cl100k_base"
 	embeddingModel      = openaisdk.EmbeddingModelTextEmbedding3Small
 	embeddingDimensions = 1536
 	defaultChatModel    = "gpt-4o-mini"
@@ -38,10 +39,11 @@ const (
 
 func main() {
 	var (
-		question = flag.String("question", defaultQuestion, "Question to ask the RAG pipeline")
-		docsDir  = flag.String("docs", defaultDocsDir, "Directory containing markdown docs to index")
-		reindex  = flag.Bool("reindex", false, "Force re-indexing even if documents already exist")
-		table    = flag.String("table", envOr(envPGTable, defaultPGTable), "Postgres table name for vectors")
+		question    = flag.String("question", defaultQuestion, "Question to ask the RAG pipeline")
+		docsDir     = flag.String("docs", defaultDocsDir, "Directory containing markdown docs to index")
+		tkModelName = flag.String("tk_md_name", defaultTKModelName, "tiktoken tokenizer model name")
+		reindex     = flag.Bool("reindex", false, "Force re-indexing even if documents already exist")
+		table       = flag.String("table", envOr(envPGTable, defaultPGTable), "Postgres table name for vectors")
 	)
 	flag.Parse()
 
@@ -60,13 +62,17 @@ func main() {
 	defer pgStore.Close()
 
 	llm := buildChatClient(apiKey, os.Getenv(envOpenAIBaseURL), defaultChatModel)
+	tk, err := tiktoken.NewTiktokenTokenizer(*tkModelName)
+	if err != nil {
+		log.Fatalf("NewTiktokenTokenizer failed: %v", err)
+	}
 
 	pipeline, err := agentic.NewPipeline(
 		agentic.Clients{Default: llm},
 		embedder,
 		pgStore,
 		agentic.WithTopK(1),
-		agentic.WithChunker(markdown.New()),
+		agentic.WithTokenizer(tk),
 		agentic.WithHybridSearch(true),
 	)
 	if err != nil {

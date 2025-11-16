@@ -14,6 +14,7 @@ import (
 	"github.com/sweetpotato0/ai-allin/rag/document"
 	"github.com/sweetpotato0/ai-allin/rag/embedder"
 	"github.com/sweetpotato0/ai-allin/rag/reranker"
+	"github.com/sweetpotato0/ai-allin/rag/tokenizer"
 	"github.com/sweetpotato0/ai-allin/vector"
 )
 
@@ -24,6 +25,7 @@ type Config struct {
 	KeywordTopK   int
 	VectorWeight  float32
 	KeywordWeight float32
+	Tokenizer     tokenizer.Tokenizer
 	Chunker       chunking.Chunker
 	Reranker      reranker.Reranker
 }
@@ -101,10 +103,11 @@ type Engine struct {
 }
 
 // New creates a hybrid retrieval engine.
-func New(store vector.VectorStore, emb embedder.Embedder, opts ...Option) (*Engine, error) {
+func New(store vector.VectorStore, tk tokenizer.Tokenizer, emb embedder.Embedder, opts ...Option) (*Engine, error) {
 	if store == nil || emb == nil {
 		return nil, errors.New("store and embedder are required")
 	}
+
 	cfg := Config{
 		VectorTopK:    12,
 		RerankTopK:    6,
@@ -112,8 +115,8 @@ func New(store vector.VectorStore, emb embedder.Embedder, opts ...Option) (*Engi
 		VectorWeight:  0.7,
 		KeywordWeight: 0.3,
 		Chunker: chunking.NewSimpleChunker(
-			chunking.WithChunkSize(900),
 			chunking.WithOverlap(150),
+			chunking.WithTokenizer(tk),
 		),
 		Reranker: reranker.NewCosineReranker(),
 	}
@@ -138,7 +141,6 @@ func (e *Engine) IndexDocuments(ctx context.Context, docs ...document.Document) 
 		return errors.New("chunker not configured")
 	}
 	for _, doc := range docs {
-		document.EnsureDocumentID(&doc)
 		chunks, err := e.chunker.Chunk(ctx, doc)
 		if err != nil {
 			return err

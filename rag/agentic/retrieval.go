@@ -12,6 +12,7 @@ import (
 	"github.com/sweetpotato0/ai-allin/rag/embedder"
 	"github.com/sweetpotato0/ai-allin/rag/reranker"
 	"github.com/sweetpotato0/ai-allin/rag/retriever"
+	"github.com/sweetpotato0/ai-allin/rag/tokenizer"
 	"github.com/sweetpotato0/ai-allin/vector"
 )
 
@@ -114,10 +115,6 @@ func newDefaultRetrievalEngine(vec vector.VectorStore, emb vector.Embedder, cfg 
 		return nil, fmt.Errorf("embedder is required")
 	}
 
-	chunkSize := cfg.ChunkSize
-	if chunkSize <= 0 {
-		chunkSize = 800
-	}
 	overlap := cfg.ChunkOverlap
 	if overlap < 0 {
 		overlap = 120
@@ -125,20 +122,13 @@ func newDefaultRetrievalEngine(vec vector.VectorStore, emb vector.Embedder, cfg 
 
 	chunker := cfg.chunker
 	if chunker == nil {
-		separator := cfg.ChunkSeparator
-		if strings.TrimSpace(separator) == "" {
-			separator = "\n\n"
-		}
-		minSize := cfg.ChunkMinSize
-		if minSize < 0 {
-			minSize = 0
+		tokenizer := tokenizer.NewSimpleTokenizer()
+		if cfg.tokenizer != nil {
+			tokenizer = cfg.tokenizer
 		}
 		chunker = chunking.NewSimpleChunker(
-			chunking.WithChunkSize(chunkSize),
+			chunking.WithTokenizer(tokenizer),
 			chunking.WithOverlap(overlap),
-			chunking.WithSeparator(separator),
-			chunking.WithMinChunkSize(minSize),
-			chunking.WithSectionTagging(true),
 		)
 	}
 
@@ -147,11 +137,13 @@ func newDefaultRetrievalEngine(vec vector.VectorStore, emb vector.Embedder, cfg 
 		rer = reranker.NewCosineReranker()
 	}
 
+	summar := cfg.summarizer
 	adapter := embedder.NewVectorAdapterWithNormalization(emb, cfg.NormalizeEmbeddings)
 	base := retriever.New(
 		vec,
 		adapter,
 		chunker,
+		summar,
 		rer,
 		retriever.WithSearchTopK(cfg.TopK),
 		retriever.WithRerankTopK(cfg.RerankTopK),

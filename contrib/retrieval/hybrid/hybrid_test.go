@@ -7,6 +7,7 @@ import (
 	"github.com/sweetpotato0/ai-allin/contrib/reranker/mmr"
 	"github.com/sweetpotato0/ai-allin/rag/chunking"
 	"github.com/sweetpotato0/ai-allin/rag/document"
+	"github.com/sweetpotato0/ai-allin/rag/tokenizer"
 	"github.com/sweetpotato0/ai-allin/vector"
 )
 
@@ -56,7 +57,7 @@ func (s *stubEmbedder) EmbedQuery(ctx context.Context, query string) ([]float32,
 func TestHybridEngineCombinesSignals(t *testing.T) {
 	store := newStubVectorStore()
 	emb := &stubEmbedder{}
-	engine, err := New(store, emb, WithChunker(chunking.NewSimpleChunker()), WithReranker(mmr.New()))
+	engine, err := New(store, tokenizer.NewSimpleTokenizer(), emb, WithChunker(chunking.NewSimpleChunker()), WithReranker(mmr.New()))
 	if err != nil {
 		t.Fatalf("New error: %v", err)
 	}

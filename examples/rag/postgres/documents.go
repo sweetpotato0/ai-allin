@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/sweetpotato0/ai-allin/rag/agentic"
+	"github.com/sweetpotato0/ai-allin/rag/preprocess"
 )
 
 func collectDocuments(docsDir string) ([]agentic.Document, error) {
@@ -48,6 +49,7 @@ func buildDocument(path, base string) (agentic.Document, error) {
 	}
 	content := strings.ToValidUTF8(string(data), "")
 	title := extractTitle(content, filepath.Base(path))
+	content = preprocess.Preprocess(content)
 
 	id := filepath.ToSlash(path)
 	if base != "" {

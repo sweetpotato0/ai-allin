@@ -5,6 +5,8 @@ import (
 
 	"github.com/sweetpotato0/ai-allin/rag/chunking"
 	"github.com/sweetpotato0/ai-allin/rag/reranker"
+	"github.com/sweetpotato0/ai-allin/rag/summarizer"
+	"github.com/sweetpotato0/ai-allin/rag/tokenizer"
 )
 
 // Config controls behaviour of the Agentic pipeline as well as the retrieval stage.
@@ -33,14 +35,13 @@ type Config struct {
 	QueryLLMRetries int // How many times the researcher retries invalid LLM output
 	QueryMaxResults int // Upper bound on emitted queries per plan step
 
-	ChunkSize      int    // Desired chunk size used by default chunker
-	ChunkOverlap   int    // Overlap between consecutive chunks
-	ChunkMinSize   int    // Merge short chunks until reaching this size
-	ChunkSeparator string // Custom separator passed to chunker
+	ChunkOverlap int // Overlap between consecutive chunks
 
-	chunker   chunking.Chunker  // Optional override for chunking strategy
-	reranker  reranker.Reranker // Optional override for reranking stage
-	retrieval RetrievalEngine   // Optional override for the entire retrieval engine
+	tokenizer  tokenizer.Tokenizer   // Optional override for chunking strategy
+	chunker    chunking.Chunker      // Optional override for chunking strategy
+	summarizer summarizer.Summarizer // Optional override for reranking stage
+	reranker   reranker.Reranker     // Optional override for reranking stage
+	retrieval  RetrievalEngine       // Optional override for the entire retrieval engine
 }
 
 // RetrievalPreset bundles commonly used retrieval settings.
@@ -238,15 +239,6 @@ func WithMaxPlanSteps(max int) Option {
 	}
 }
 
-// WithChunkSize configures chunk character length for indexing.
-func WithChunkSize(size int) Option {
-	return func(cfg *Config) {
-		if size > 0 {
-			cfg.ChunkSize = size
-		}
-	}
-}
-
 // WithChunkOverlap configures overlap between chunks.
 func WithChunkOverlap(overlap int) Option {
 	return func(cfg *Config) {
@@ -256,29 +248,29 @@ func WithChunkOverlap(overlap int) Option {
 	}
 }
 
-// WithChunkSeparator overrides the logical separator used by the default chunker.
-func WithChunkSeparator(sep string) Option {
-	return func(cfg *Config) {
-		if strings.TrimSpace(sep) != "" {
-			cfg.ChunkSeparator = sep
-		}
-	}
-}
-
-// WithChunkMinSize enforces a lower bound on chunk length before emitting.
-func WithChunkMinSize(size int) Option {
-	return func(cfg *Config) {
-		if size > 0 {
-			cfg.ChunkMinSize = size
-		}
-	}
-}
-
 // WithChunker plugs in a custom chunker implementation.
 func WithChunker(ch chunking.Chunker) Option {
 	return func(cfg *Config) {
 		if ch != nil {
 			cfg.chunker = ch
+		}
+	}
+}
+
+// WithTokenizer plugs in a custom chunker implementation.
+func WithTokenizer(t tokenizer.Tokenizer) Option {
+	return func(cfg *Config) {
+		if t != nil {
+			cfg.tokenizer = t
+		}
+	}
+}
+
+// WithSummarizer plugs in a custom summarizer implementation.
+func WithSummarizer(s summarizer.Summarizer) Option {
+	return func(cfg *Config) {
+		if s != nil {
+			cfg.summarizer = s
 		}
 	}
 }
@@ -319,10 +311,7 @@ func defaultConfig() *Config {
 		MinEvidenceCount: 1,
 		QueryLLMRetries:  2,
 		QueryMaxResults:  4,
-		ChunkSize:        800,
 		ChunkOverlap:     120,
-		ChunkMinSize:     200,
-		ChunkSeparator:   "\n\n",
 		PlannerPrompt: `You are the lead planner for an agentic RAG pipeline. Break the user question into at most {{max_steps}} sequential research steps that collect the evidence needed for a final answer. Output compact JSON only matching {"strategy":"...", "steps":[{"id":"step-1","goal":"...","questions":["..."],"expected_evidence":"...","downstream_support":"..."}]}.
 Planning rules:
 - "strategy" is a single sentence describing the overall approach.
