@@ -3,10 +3,12 @@ package agentic
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"sort"
 	"strings"
 	"sync"
 
+	"github.com/sweetpotato0/ai-allin/pkg/logging"
 	"github.com/sweetpotato0/ai-allin/rag/chunking"
 	"github.com/sweetpotato0/ai-allin/rag/document"
 	"github.com/sweetpotato0/ai-allin/rag/embedder"
@@ -38,10 +40,17 @@ type defaultRetrieval struct {
 	base     *retriever.Retriever
 	cfg      *Config
 	keywords *keywordIndex
+	logger   *slog.Logger
 }
 
 func (d *defaultRetrieval) IndexDocuments(ctx context.Context, docs ...document.Document) error {
+	if d.logger != nil {
+		d.logger.Info("default retrieval indexing documents", "count", len(docs))
+	}
 	if err := d.base.IndexDocuments(ctx, docs...); err != nil {
+		if d.logger != nil {
+			d.logger.Error("base retriever index failed", "error", err)
+		}
 		return err
 	}
 	d.keywords.add(docs...)
@@ -49,8 +58,14 @@ func (d *defaultRetrieval) IndexDocuments(ctx context.Context, docs ...document.
 }
 
 func (d *defaultRetrieval) Search(ctx context.Context, query string) ([]RetrievalResult, error) {
+	if d.logger != nil {
+		d.logger.Debug("default retrieval search started", "query", trimLogString(query, 80))
+	}
 	results, err := d.base.Search(ctx, query)
 	if err != nil {
+		if d.logger != nil {
+			d.logger.Error("base retrieval search failed", "error", err)
+		}
 		return nil, err
 	}
 	out := make([]RetrievalResult, 0, len(results))
@@ -71,8 +86,14 @@ func (d *defaultRetrieval) Search(ctx context.Context, query string) ([]Retrieva
 		target = d.cfg.HybridTopK
 	}
 	if d.cfg.EnableHybridSearch && len(out) < target {
+		if d.logger != nil {
+			d.logger.Debug("hybrid search fallback triggered", "missing", target-len(out))
+		}
 		extras := d.keywords.search(query, target-len(out), seen)
 		out = append(out, extras...)
+	}
+	if d.logger != nil {
+		d.logger.Debug("default retrieval search completed", "query", trimLogString(query, 80), "hits", len(out))
 	}
 	return out, nil
 }
@@ -82,6 +103,9 @@ func (d *defaultRetrieval) Document(id string) (document.Document, bool) {
 }
 
 func (d *defaultRetrieval) Clear(ctx context.Context) error {
+	if d.logger != nil {
+		d.logger.Warn("clearing default retrieval index")
+	}
 	if err := d.base.Clear(ctx); err != nil {
 		return err
 	}
@@ -139,19 +163,32 @@ func newDefaultRetrievalEngine(vec vector.VectorStore, emb vector.Embedder, cfg 
 
 	summar := cfg.summarizer
 	adapter := embedder.NewVectorAdapterWithNormalization(emb, cfg.NormalizeEmbeddings)
+	retrLogger := logging.WithComponent("retriever").With("pipeline", cfg.Name)
+	opts := []retriever.Option{
+		retriever.WithSearchTopK(cfg.TopK),
+		retriever.WithRerankTopK(cfg.RerankTopK),
+		retriever.WithLogger(retrLogger),
+	}
+	if cfg.preprocess != nil {
+		opts = append(opts, retriever.WithPreprocessor(func(ctx context.Context, doc document.Document) (document.Document, error) {
+			processed := doc.Clone()
+			processed.Content = cfg.preprocess(processed.Content)
+			return processed, nil
+		}))
+	}
 	base := retriever.New(
 		vec,
 		adapter,
 		chunker,
 		summar,
 		rer,
-		retriever.WithSearchTopK(cfg.TopK),
-		retriever.WithRerankTopK(cfg.RerankTopK),
+		opts...,
 	)
 	return &defaultRetrieval{
 		base:     base,
 		cfg:      cfg,
 		keywords: newKeywordIndex(),
+		logger:   logging.WithComponent("agentic_retrieval").With("pipeline", cfg.Name),
 	}, nil
 }
 
@@ -287,4 +324,12 @@ func keywordChunk(doc document.Document, seen map[string]struct{}) document.Chun
 	chunk.Metadata["section"] = "body"
 	chunk.Metadata["retrieval"] = "keyword"
 	return chunk
+}
+
+func trimLogString(text string, limit int) string {
+	text = strings.TrimSpace(text)
+	if limit <= 0 || len([]rune(text)) <= limit {
+		return text
+	}
+	return string([]rune(text)[:limit]) + "..."
 }

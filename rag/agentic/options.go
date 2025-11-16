@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"github.com/sweetpotato0/ai-allin/rag/chunking"
+	"github.com/sweetpotato0/ai-allin/rag/preprocess"
 	"github.com/sweetpotato0/ai-allin/rag/reranker"
 	"github.com/sweetpotato0/ai-allin/rag/summarizer"
 	"github.com/sweetpotato0/ai-allin/rag/tokenizer"
@@ -42,6 +43,7 @@ type Config struct {
 	summarizer summarizer.Summarizer // Optional override for reranking stage
 	reranker   reranker.Reranker     // Optional override for reranking stage
 	retrieval  RetrievalEngine       // Optional override for the entire retrieval engine
+	preprocess func(string) string   // Optional override for document preprocessing
 }
 
 // RetrievalPreset bundles commonly used retrieval settings.
@@ -284,6 +286,13 @@ func WithReranker(r reranker.Reranker) Option {
 	}
 }
 
+// WithPreprocessFunc overrides the document preprocessing pipeline (defaults to preprocess.Preprocess).
+func WithPreprocessFunc(fn func(string) string) Option {
+	return func(cfg *Config) {
+		cfg.preprocess = fn
+	}
+}
+
 // WithRetriever sets a fully managed retrieval engine, bypassing the built-in chunk/embed construction.
 func WithRetriever(engine RetrievalEngine) Option {
 	return func(cfg *Config) {
@@ -341,6 +350,7 @@ Rules:
 - If revision is needed, set "verdict":"revise" and provide an improved, citation-backed answer in "final_answer"; otherwise copy the draft verbatim.
 - Match the language of the original question (Chinese stays Chinese, else English).`,
 		NoAnswerMessage: "抱歉，我没有在知识库中找到与该问题相关的答案，请提供更多上下文或重新描述问题。",
+		preprocess:      preprocess.Preprocess,
 	}
 	WithRetrievalPreset(RetrievalPresetHybrid)(cfg)
 	return cfg

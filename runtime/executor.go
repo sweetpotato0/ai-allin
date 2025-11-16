@@ -3,10 +3,12 @@ package runtime
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/sweetpotato0/ai-allin/agent"
 	"github.com/sweetpotato0/ai-allin/message"
+	"github.com/sweetpotato0/ai-allin/pkg/logging"
 )
 
 // Request captures the inputs required to execute a turn.
@@ -34,6 +36,7 @@ type Executor interface {
 // AgentExecutor wraps an agent.Agent and exposes it through the Executor interface.
 type AgentExecutor struct {
 	prototype *agent.Agent
+	logger    *slog.Logger
 }
 
 // NewAgentExecutor constructs a new runtime executor backed by a prototype agent.
@@ -41,7 +44,10 @@ func NewAgentExecutor(prototype *agent.Agent) *AgentExecutor {
 	if prototype == nil {
 		panic("runtime: agent prototype cannot be nil")
 	}
-	return &AgentExecutor{prototype: prototype}
+	return &AgentExecutor{
+		prototype: prototype,
+		logger:    logging.WithComponent("executor").With("executor", "agent"),
+	}
 }
 
 // Execute runs the underlying agent using the provided request and conversation history.
@@ -58,12 +64,21 @@ func (e *AgentExecutor) Execute(ctx context.Context, req *Request) (*TurnResult,
 		runner.RestoreMessages(req.History)
 	}
 
+	if e.logger != nil {
+		e.logger.Info("executor running turn", "session_id", req.SessionID, "history", len(req.History))
+	}
 	start := time.Now()
 	output, err := runner.Run(ctx, req.Input)
 	if err != nil {
+		if e.logger != nil {
+			e.logger.Error("executor run failed", "session_id", req.SessionID, "error", err)
+		}
 		return nil, err
 	}
 	duration := time.Since(start)
+	if e.logger != nil {
+		e.logger.Info("executor run completed", "session_id", req.SessionID, "duration_ms", duration.Milliseconds())
+	}
 
 	messages := message.CloneMessages(runner.GetMessages())
 	var last *message.Message

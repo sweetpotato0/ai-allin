@@ -3,11 +3,14 @@ package agent
 import (
 	"context"
 	"fmt"
+	"log/slog"
+	"strings"
 
 	agentContext "github.com/sweetpotato0/ai-allin/context"
 	"github.com/sweetpotato0/ai-allin/memory"
 	"github.com/sweetpotato0/ai-allin/message"
 	"github.com/sweetpotato0/ai-allin/middleware"
+	"github.com/sweetpotato0/ai-allin/pkg/logging"
 	"github.com/sweetpotato0/ai-allin/prompt"
 	runtimeprovider "github.com/sweetpotato0/ai-allin/runtime/provider"
 	"github.com/sweetpotato0/ai-allin/tool"
@@ -43,6 +46,7 @@ type Agent struct {
 	ctx            *agentContext.Context
 	middlewares    *middleware.MiddlewareChain
 	toolSupervisor *runtimeprovider.ToolSupervisor
+	logger         *slog.Logger
 }
 
 // Option is a function that configures an Agent
@@ -125,16 +129,40 @@ func WithMiddlewares(middlewares ...middleware.Middleware) Option {
 	}
 }
 
+// WithLogger overrides the logger used by the agent.
+func WithLogger(logger *slog.Logger) Option {
+	return func(a *Agent) {
+		if logger != nil {
+			a.logger = logger
+		}
+	}
+}
+
 func (a *Agent) ensureToolProviders(ctx context.Context) error {
 	if !a.enableTools || a.toolSupervisor == nil {
 		return nil
 	}
-	return a.toolSupervisor.Refresh(ctx)
+	if a.logger != nil {
+		a.logger.Debug("refreshing tool providers")
+	}
+	if err := a.toolSupervisor.Refresh(ctx); err != nil {
+		if a.logger != nil {
+			a.logger.Error("tool provider refresh failed", "error", err)
+		}
+		return err
+	}
+	if a.logger != nil {
+		a.logger.Debug("tool providers refreshed")
+	}
+	return nil
 }
 
 func (a *Agent) reportToolError(err error) {
 	if err == nil || a.ctx == nil {
 		return
+	}
+	if a.logger != nil {
+		a.logger.Error("tool provider error", "error", err)
 	}
 	a.ctx.AddMessage(message.NewMessage(message.RoleSystem, fmt.Sprintf("Failed to refresh tools: %v", err)))
 }
@@ -160,6 +188,11 @@ func New(opts ...Option) *Agent {
 	for _, opt := range opts {
 		opt(agent)
 	}
+
+	if agent.logger == nil {
+		agent.logger = logging.WithComponent("agent")
+	}
+	agent.logger = agent.logger.With("agent", agent.name)
 
 	// Add system prompt as first message if set
 	if agent.systemPrompt != "" {
@@ -239,7 +272,13 @@ func (a *Agent) RestoreMessages(messages []*message.Message) {
 
 // Run executes the agent with the given input
 func (a *Agent) Run(ctx context.Context, input string) (*message.Message, error) {
+	if a.logger != nil {
+		a.logger.Info("agent run started", "input", trimLogText(input, 160))
+	}
 	if err := a.ensureToolProviders(ctx); err != nil {
+		if a.logger != nil {
+			a.logger.Error("tool provider refresh failed", "error", err)
+		}
 		return nil, err
 	}
 
@@ -258,6 +297,9 @@ func (a *Agent) Run(ctx context.Context, input string) (*message.Message, error)
 		if a.enableMemory && a.memory != nil {
 			memories, err := a.memory.SearchMemory(mwCtx.Context(), input)
 			if err == nil && len(memories) > 0 {
+				if a.logger != nil {
+					a.logger.Debug("memory hits found", "count", len(memories))
+				}
 				// Add memories as context (simplified)
 				memoryContext := "Relevant memories:\n"
 				for _, mem := range memories {
@@ -265,15 +307,23 @@ func (a *Agent) Run(ctx context.Context, input string) (*message.Message, error)
 				}
 				contextMsg := message.NewMessage(message.RoleSystem, memoryContext)
 				a.ctx.AddMessage(contextMsg)
+			} else if err != nil && a.logger != nil {
+				a.logger.Warn("memory search failed", "error", err)
 			}
 		}
 
 		// Execution loop with tool calls
 		for i := 0; i < a.maxIterations; i++ {
+			if a.logger != nil {
+				a.logger.Debug("llm turn started", "iteration", i+1)
+			}
 			// Get tool schemas if enabled
 			var toolSchemas []map[string]any
 			if a.enableTools {
 				toolSchemas = a.tools.ToJSONSchemas()
+				if a.logger != nil {
+					a.logger.Debug("tools available", "count", len(toolSchemas))
+				}
 			}
 
 			// Call LLM
@@ -283,6 +333,9 @@ func (a *Agent) Run(ctx context.Context, input string) (*message.Message, error)
 			}
 			resp, err := a.llm.Generate(mwCtx.Context(), req)
 			if err != nil {
+				if a.logger != nil {
+					a.logger.Error("llm generation failed", "iteration", i+1, "error", err)
+				}
 				return fmt.Errorf("LLM generation failed: %w", err)
 			}
 
@@ -302,13 +355,22 @@ func (a *Agent) Run(ctx context.Context, input string) (*message.Message, error)
 					}
 					a.memory.AddMemory(mwCtx.Context(), mem)
 				}
+				if a.logger != nil {
+					a.logger.Info("agent run completed without tool calls", "iteration", i+1)
+				}
 				return nil
 			}
 
 			// Execute tool calls
 			for _, toolCall := range resp.Message.ToolCalls {
+				if a.logger != nil {
+					a.logger.Info("executing tool call", "tool", toolCall.Name)
+				}
 				result, err := a.tools.Execute(mwCtx.Context(), toolCall.Name, toolCall.Args)
 				if err != nil {
+					if a.logger != nil {
+						a.logger.Error("tool execution failed", "tool", toolCall.Name, "error", err)
+					}
 					result = fmt.Sprintf("Error executing tool %s: %v", toolCall.Name, err)
 				}
 
@@ -325,13 +387,22 @@ func (a *Agent) Run(ctx context.Context, input string) (*message.Message, error)
 	})
 
 	if err != nil {
+		if a.logger != nil {
+			a.logger.Error("agent run failed", "error", err)
+		}
 		return nil, err
 	}
 
 	if mwCtx.Response != nil {
+		if a.logger != nil {
+			a.logger.Info("agent run completed", "output", trimLogText(mwCtx.Response.Text(), 160))
+		}
 		return mwCtx.Response, nil
 	}
 
+	if a.logger != nil {
+		a.logger.Error("agent run ended without response")
+	}
 	return nil, fmt.Errorf("no response generated")
 }
 
@@ -339,9 +410,18 @@ func (a *Agent) Run(ctx context.Context, input string) (*message.Message, error)
 func (a *Agent) Stream(ctx context.Context, input string, callback func(*message.Message) error) error {
 	// This is a placeholder for streaming implementation
 	// In a real implementation, this would stream tokens as they're generated
+	if a.logger != nil {
+		a.logger.Info("agent stream started", "input", trimLogText(input, 160))
+	}
 	result, err := a.Run(ctx, input)
 	if err != nil {
+		if a.logger != nil {
+			a.logger.Error("agent stream failed", "error", err)
+		}
 		return err
+	}
+	if a.logger != nil {
+		a.logger.Info("agent stream callback", "output", trimLogText(result.Text(), 160))
 	}
 	return callback(result)
 }
@@ -355,6 +435,7 @@ func (a *Agent) Clone() *Agent {
 		WithTemperature(a.temperature),
 		WithProvider(a.llm),
 		WithTools(a.enableTools),
+		WithLogger(a.logger),
 	)
 
 	// Clone memory store if set
@@ -387,4 +468,12 @@ func (a *Agent) Clone() *Agent {
 	}
 
 	return cloned
+}
+
+func trimLogText(text string, limit int) string {
+	text = strings.TrimSpace(text)
+	if limit <= 0 || len([]rune(text)) <= limit {
+		return text
+	}
+	return string([]rune(text)[:limit]) + "..."
 }

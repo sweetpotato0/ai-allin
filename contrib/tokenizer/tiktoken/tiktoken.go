@@ -29,7 +29,6 @@ func (t *Tokenizer) CountTokens(text string) int {
 	for _, v := range t.Encode(text) {
 		count += v
 	}
-	println(count)
 	return count
 }
 

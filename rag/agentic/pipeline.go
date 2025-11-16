@@ -3,10 +3,12 @@ package agentic
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"strings"
 
 	"github.com/sweetpotato0/ai-allin/agent"
 	"github.com/sweetpotato0/ai-allin/graph"
+	"github.com/sweetpotato0/ai-allin/pkg/logging"
 	"github.com/sweetpotato0/ai-allin/rag/document"
 	"github.com/sweetpotato0/ai-allin/vector"
 )
@@ -38,6 +40,7 @@ type Pipeline struct {
 	critic     *critic
 	retrieval  RetrievalEngine
 	graph      *graph.Graph
+	logger     *slog.Logger
 }
 
 type pipelineState struct {
@@ -77,6 +80,7 @@ func NewPipeline(clients Clients, embedder vector.Embedder, store vector.VectorS
 		writer:     newSynthesizer(writerLLM, cfg),
 		critic:     nil,
 		retrieval:  engine,
+		logger:     logging.WithComponent("agentic_pipeline").With("pipeline", cfg.Name),
 	}
 	if cfg.EnableCritic {
 		p.critic = newCritic(pickClient(clients.Critic, clients.Default), cfg)
@@ -104,6 +108,12 @@ func NewPipeline(clients Clients, embedder vector.Embedder, store vector.VectorS
 	g := builder.Build()
 	g.SetMaxVisits(cfg.GraphMaxVisits)
 	p.graph = g
+	p.logger.Info("agentic pipeline initialised",
+		"top_k", cfg.TopK,
+		"rerank_top_k", cfg.RerankTopK,
+		"hybrid", cfg.EnableHybridSearch,
+		"critic_enabled", cfg.EnableCritic,
+	)
 	return p, nil
 }
 
@@ -119,6 +129,7 @@ func (p *Pipeline) Run(ctx context.Context, question string) (*Response, error) 
 	if strings.TrimSpace(question) == "" {
 		return nil, fmt.Errorf("question cannot be empty")
 	}
+	p.logger.Info("pipeline run started", "question", trimForLog(question, 120))
 
 	initial := graph.State{
 		ragStateKey: &pipelineState{
@@ -147,16 +158,33 @@ func (p *Pipeline) Run(ctx context.Context, question string) (*Response, error) 
 	if state.Critic != nil && state.Critic.FinalAnswer != "" {
 		resp.FinalAnswer = state.Critic.FinalAnswer
 	}
+	planSteps := 0
+	if resp.Plan != nil {
+		planSteps = len(resp.Plan.Steps)
+	}
+	p.logger.Info("pipeline run completed",
+		"question", trimForLog(question, 120),
+		"plan_steps", planSteps,
+		"evidence_count", len(resp.Evidence),
+		"critic", state.Critic != nil,
+	)
 	return resp, nil
 }
 
 // IndexDocuments ingests documents into the vector store.
 // IndexDocuments chunks and embeds documents through the configured retrieval engine.
 func (p *Pipeline) IndexDocuments(ctx context.Context, docs ...Document) error {
+	if len(docs) == 0 {
+		p.logger.Info("index documents invoked with no documents")
+		return nil
+	}
+	p.logger.Info("indexing documents", "count", len(docs))
 	casts := make([]document.Document, len(docs))
 	for i, doc := range docs {
 		if strings.TrimSpace(doc.Content) == "" {
-			return fmt.Errorf("document content cannot be empty")
+			err := fmt.Errorf("document content cannot be empty")
+			p.logger.Error("index document failed", "error", err, "doc_id", doc.ID)
+			return err
 		}
 		casts[i] = document.Document{
 			ID:       doc.ID,
@@ -173,6 +201,7 @@ func (p *Pipeline) IndexDocuments(ctx context.Context, docs ...Document) error {
 
 // ClearDocuments removes all indexed documents.
 func (p *Pipeline) ClearDocuments(ctx context.Context) error {
+	p.logger.Warn("clearing all indexed documents")
 	return p.retrieval.Clear(ctx)
 }
 
@@ -194,9 +223,11 @@ func (p *Pipeline) planNode(ctx context.Context, state graph.State) (graph.State
 
 	plan, err := p.planner.Plan(ctx, st.Question)
 	if err != nil {
+		p.logger.Error("planner failed", "error", err)
 		return state, err
 	}
 	st.Plan = plan
+	p.logger.Info("plan generated", "steps", len(plan.Steps))
 	return state, nil
 }
 
@@ -217,16 +248,20 @@ func (p *Pipeline) researchNode(ctx context.Context, state graph.State) (graph.S
 	index := make(map[evidenceKey]int)
 
 	for _, step := range st.Plan.Steps {
+		p.logger.Debug("research step started", "step", step.ID, "goal", trimForLog(step.Goal, 80))
 		queries, err := p.researcher.buildQueries(ctx, st.Question, step)
 		if err != nil {
+			p.logger.Error("query generation failed", "step", step.ID, "error", err)
 			return state, err
 		}
+		p.logger.Debug("queries generated", "step", step.ID, "count", len(queries))
 		for _, q := range queries {
-			fmt.Printf("当前查询：%#v\n", q)
 			results, err := p.retrieval.Search(ctx, q)
 			if err != nil {
+				p.logger.Error("vector search failed", "step", step.ID, "error", err)
 				return state, fmt.Errorf("vector search failed: %w", err)
 			}
+			p.logger.Debug("retrieval results", "step", step.ID, "query", trimForLog(q, 80), "hits", len(results))
 			for _, candidate := range results {
 				doc, ok := p.retrieval.Document(candidate.Chunk.DocumentID)
 				if !ok {
@@ -256,6 +291,7 @@ func (p *Pipeline) researchNode(ctx context.Context, state graph.State) (graph.S
 	}
 
 	st.Evidence = collected
+	p.logger.Info("research completed", "evidence_count", len(collected))
 	return state, nil
 }
 
@@ -268,26 +304,32 @@ func (p *Pipeline) synthesizeNode(ctx context.Context, state graph.State) (graph
 	if required < 0 {
 		required = 0
 	}
+	p.logger.Info("synthesis started", "evidence_count", len(st.Evidence), "required", required)
 	if len(st.Evidence) < required {
 		fallback := strings.TrimSpace(p.cfg.NoAnswerMessage)
 		if fallback == "" {
 			fallback = "No supporting evidence was found for this question."
 		}
 		st.Draft = fallback
+		p.logger.Warn("not enough evidence for synthesis", "have", len(st.Evidence), "required", required)
 		return state, nil
 	}
 	draft, err := p.writer.Compose(ctx, st.Question, st.Plan, st.Evidence)
 	if err != nil {
+		p.logger.Error("synthesis failed", "error", err)
 		return state, err
 	}
 	st.Draft = draft
+	p.logger.Info("draft synthesis completed", "draft_length", len(draft))
 	return state, nil
 }
 
 func (p *Pipeline) criticGate(ctx context.Context, state graph.State) (string, error) {
 	if !p.cfg.EnableCritic || p.critic == nil {
+		p.logger.Debug("critic skipped for run")
 		return "skip", nil
 	}
+	p.logger.Debug("critic enabled for run")
 	return "run", nil
 }
 
@@ -299,11 +341,16 @@ func (p *Pipeline) criticNode(ctx context.Context, state graph.State) (graph.Sta
 	if p.critic == nil {
 		return state, nil
 	}
+	p.logger.Info("critic review started")
 	feedback, err := p.critic.Review(ctx, st.Question, st.Draft, st.Plan, st.Evidence)
 	if err != nil {
+		p.logger.Error("critic review failed", "error", err)
 		return state, err
 	}
 	st.Critic = feedback
+	if feedback != nil {
+		p.logger.Info("critic review completed", "verdict", feedback.Verdict)
+	}
 	return state, nil
 }
 
@@ -341,4 +388,13 @@ func summarizeChunk(chunk document.Chunk, limit int) string {
 		return text
 	}
 	return text[:limit] + "..."
+}
+
+func trimForLog(text string, limit int) string {
+	text = strings.TrimSpace(text)
+	if limit <= 0 || len([]rune(text)) <= limit {
+		return text
+	}
+	runes := []rune(text)
+	return string(runes[:limit]) + "..."
 }
