@@ -8,12 +8,16 @@ import (
 	"sync"
 
 	"github.com/sweetpotato0/ai-allin/pkg/logging"
+	"github.com/sweetpotato0/ai-allin/pkg/telemetry"
 	"github.com/sweetpotato0/ai-allin/rag/chunking"
 	"github.com/sweetpotato0/ai-allin/rag/document"
 	"github.com/sweetpotato0/ai-allin/rag/embedder"
 	"github.com/sweetpotato0/ai-allin/rag/reranker"
 	"github.com/sweetpotato0/ai-allin/rag/summarizer"
 	"github.com/sweetpotato0/ai-allin/vector"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	oteltrace "go.opentelemetry.io/otel/trace"
 )
 
 // Config controls retrieval behaviour.
@@ -77,6 +81,8 @@ type Retriever struct {
 	chunks    map[string]document.Chunk
 }
 
+var retrieverTracer = otel.Tracer("github.com/sweetpotato0/ai-allin/rag/retriever")
+
 // PreprocessFunc transforms documents before chunking (e.g. cleaning HTML).
 type PreprocessFunc func(ctx context.Context, doc document.Document) (document.Document, error)
 
@@ -109,8 +115,13 @@ func New(store vector.VectorStore, emb embedder.Embedder, chunker chunking.Chunk
 
 // IndexDocuments ingests documents -> preprocess -> chunks -> embeddings -> vector store.
 func (r *Retriever) IndexDocuments(ctx context.Context, docs ...document.Document) error {
+	ctx, span := retrieverTracer.Start(ctx, "Retriever.IndexDocuments",
+		oteltrace.WithAttributes(attribute.Int("docs.count", len(docs))))
+	var spanErr error
+	defer func() { telemetry.End(span, spanErr) }()
 	if r.store == nil || r.embedder == nil || r.chunker == nil {
-		return fmt.Errorf("retriever not fully configured")
+		spanErr = fmt.Errorf("retriever not fully configured")
+		return spanErr
 	}
 
 	if r.logger != nil {
@@ -126,7 +137,8 @@ func (r *Retriever) IndexDocuments(ctx context.Context, docs ...document.Documen
 				if r.logger != nil {
 					r.logger.Error("document preprocess failed", "doc_id", doc.ID, "error", err)
 				}
-				return fmt.Errorf("preprocess document %s: %w", doc.ID, err)
+				spanErr = fmt.Errorf("preprocess document %s: %w", doc.ID, err)
+				return spanErr
 			}
 		}
 
@@ -139,7 +151,8 @@ func (r *Retriever) IndexDocuments(ctx context.Context, docs ...document.Documen
 			if r.logger != nil {
 				r.logger.Error("chunking document failed", "doc_id", doc.ID, "error", err)
 			}
-			return fmt.Errorf("chunk document %s: %w", doc.ID, err)
+			spanErr = fmt.Errorf("chunk document %s: %w", doc.ID, err)
+			return spanErr
 		}
 		if r.logger != nil {
 			r.logger.Debug("document chunked", "doc_id", doc.ID, "chunks", len(chunks))
@@ -153,7 +166,8 @@ func (r *Retriever) IndexDocuments(ctx context.Context, docs ...document.Documen
 				if r.logger != nil {
 					r.logger.Error("chunk summarisation failed", "doc_id", doc.ID, "error", err)
 				}
-				return fmt.Errorf("summaryer chunks %s: %w", doc.ID, err)
+				spanErr = fmt.Errorf("summaryer chunks %s: %w", doc.ID, err)
+				return spanErr
 			}
 		}
 
@@ -163,7 +177,8 @@ func (r *Retriever) IndexDocuments(ctx context.Context, docs ...document.Documen
 				if r.logger != nil {
 					r.logger.Error("chunk embedding failed", "chunk_id", chunk.ID, "error", err)
 				}
-				return fmt.Errorf("embed chunk %s: %w", chunk.ID, err)
+				spanErr = fmt.Errorf("embed chunk %s: %w", chunk.ID, err)
+				return spanErr
 			}
 			embedding := &vector.Embedding{
 				ID:     chunk.ID,
@@ -174,7 +189,8 @@ func (r *Retriever) IndexDocuments(ctx context.Context, docs ...document.Documen
 				if r.logger != nil {
 					r.logger.Error("storing chunk embedding failed", "chunk_id", chunk.ID, "error", err)
 				}
-				return fmt.Errorf("store chunk %s: %w", chunk.ID, err)
+				spanErr = fmt.Errorf("store chunk %s: %w", chunk.ID, err)
+				return spanErr
 			}
 
 			r.mu.Lock()
@@ -197,7 +213,8 @@ func (r *Retriever) IndexDocuments(ctx context.Context, docs ...document.Documen
 					if r.logger != nil {
 						r.logger.Error("summary chunk embedding failed", "chunk_id", summaryChunk.ID, "error", err)
 					}
-					return fmt.Errorf("embed summary chunk %s: %w", chunk.ID, err)
+					spanErr = fmt.Errorf("embed summary chunk %s: %w", chunk.ID, err)
+					return spanErr
 				}
 				summary := &vector.Embedding{
 					ID:     summaryChunk.ID,
@@ -208,7 +225,8 @@ func (r *Retriever) IndexDocuments(ctx context.Context, docs ...document.Documen
 					if r.logger != nil {
 						r.logger.Error("storing summary embedding failed", "chunk_id", summaryChunk.ID, "error", err)
 					}
-					return fmt.Errorf("store summary chunk %s: %w", chunk.ID, err)
+					spanErr = fmt.Errorf("store summary chunk %s: %w", chunk.ID, err)
+					return spanErr
 				}
 
 				r.mu.Lock()
@@ -222,6 +240,9 @@ func (r *Retriever) IndexDocuments(ctx context.Context, docs ...document.Documen
 
 // Search executes semantic search followed by reranking.
 func (r *Retriever) Search(ctx context.Context, query string) ([]reranker.Result, error) {
+	ctx, span := retrieverTracer.Start(ctx, "Retriever.Search", oteltrace.WithAttributes(attribute.String("query", trimLogText(query, 80))))
+	var spanErr error
+	defer func() { telemetry.End(span, spanErr) }()
 	if r.logger != nil {
 		r.logger.Debug("retriever search started", "query", trimLogText(query, 80))
 	}
@@ -230,14 +251,16 @@ func (r *Retriever) Search(ctx context.Context, query string) ([]reranker.Result
 		if r.logger != nil {
 			r.logger.Error("query embedding failed", "error", err)
 		}
-		return nil, fmt.Errorf("embed query: %w", err)
+		spanErr = fmt.Errorf("embed query: %w", err)
+		return nil, spanErr
 	}
 	results, err := r.store.Search(ctx, queryVec, r.cfg.SearchTopK)
 	if err != nil {
 		if r.logger != nil {
 			r.logger.Error("vector search failed", "error", err)
 		}
-		return nil, fmt.Errorf("vector search: %w", err)
+		spanErr = fmt.Errorf("vector search: %w", err)
+		return nil, spanErr
 	}
 
 	candidates := make([]reranker.Candidate, 0, len(results))
@@ -254,6 +277,7 @@ func (r *Retriever) Search(ctx context.Context, query string) ([]reranker.Result
 	}
 
 	if len(candidates) == 0 {
+		span.SetAttributes(attribute.Int("hits", 0))
 		return nil, nil
 	}
 
@@ -280,6 +304,7 @@ func (r *Retriever) Search(ctx context.Context, query string) ([]reranker.Result
 	if r.logger != nil {
 		r.logger.Debug("retriever search completed", "query", trimLogText(query, 80), "hits", len(reranked))
 	}
+	span.SetAttributes(attribute.Int("hits", len(reranked)))
 	return reranked, nil
 }
 

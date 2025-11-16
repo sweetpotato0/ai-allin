@@ -23,6 +23,7 @@
 - **执行图**: 支持条件分支的工作流编排
 - **Agentic RAG**: 基于 `graph.Graph` 串联规划、检索、写作、审阅智能体的多智能体 RAG 流程
 - **RAG 组件化**: `rag/document`、`rag/chunking`、`rag/embedder`、`rag/retriever`、`rag/reranker` 等包让数据准备、检索、重排更易扩展
+- **可观测性就绪**：`pkg/logging` + `pkg/telemetry` 提供结构化日志与 OpenTelemetry 追踪钩子，覆盖 Agent、RAG、Session、Runtime 等核心路径
 - **线程安全**: RWMutex 保护的并发访问
 - **配置验证**: 基于环境变量的配置与验证
 
@@ -196,8 +197,8 @@ func main() {
     fmt.Println(response)
 
     // 创建共享 session（多 agent 协作）
-    sharedSess, err := mgr.CreateShared(ctx, "shared-session")
-    if err != nil {
+sharedSess, err := mgr.CreateShared(ctx, "shared-session")
+if err != nil {
         panic(err)
     }
 
@@ -211,6 +212,17 @@ func main() {
     fmt.Println(resp1, resp2)
 }
 ```
+
+### 可观测性示例
+
+框架内置 `pkg/telemetry`，可一行代码启用 OpenTelemetry 追踪。完整示例见 `examples/telemetry`：
+
+```bash
+export OTEL_EXPORTER_OTLP_ENDPOINT=localhost:4317
+go run ./examples/telemetry
+```
+
+该示例展示了如何初始化遥测、构建一个使用自定义 LLM 的 Agent，并输出带追踪 ID 的结构化日志。当未配置 OTLP 端点时，追踪信息会自动打印到 stdout，方便本地调试。
 
 每个会话都可以通过 `session.Session.Snapshot()` 生成 `session.Record`，其中包含完整消息历史、最近一次回复以及执行耗时。调用 `mgr.Save(ctx, sess)` 即可把最新快照写入任意 `session/store` 实现（内存、Redis、Postgres 等），用于持久化或分析。
 

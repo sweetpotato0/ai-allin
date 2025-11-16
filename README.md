@@ -23,6 +23,7 @@ A comprehensive, production-ready Go framework for building AI agents with strea
 - **Execution Graphs**: Workflow orchestration with conditional branching
 - **Agentic RAG**: Multi-agent Retrieval-Augmented Generation pipeline with planners, researchers, writers, and critics wired through `graph.Graph`
 - **RAG Building Blocks**: Dedicated packages for documents, chunking, embedders, retrievers, and rerankers to compose custom pipelines
+- **Observability-Ready**: Structured logging everywhere plus built-in OpenTelemetry tracing hooks (`pkg/telemetry`) for pipelines, agents, sessions, and runtime executors
 - **Thread-Safe Operations**: RWMutex protected concurrent access
 - **Configuration Validation**: Environment-based configuration with validation
 
@@ -102,6 +103,41 @@ ag := agent.New(
 ```
 
 You can inspect refresh failures by adding middleware or memory stores—the supervisor pushes errors back into the agent's conversation as system messages so they can be logged or surfaced to observability pipelines.
+
+### Observability (Logging & Tracing)
+
+All core packages emit structured logs via `pkg/logging` and create OpenTelemetry spans for critical operations (agent runs, pipeline stages, retrieval, sessions, runtime execution). To enable tracing, initialize the shared telemetry package once at startup:
+
+```go
+package main
+
+import (
+    "context"
+    "log"
+
+    "github.com/sweetpotato0/ai-allin/pkg/telemetry"
+)
+
+func main() {
+    ctx := context.Background()
+    shutdown, err := telemetry.Init(ctx, telemetry.Config{
+        ServiceName:    "ai-allin-example",
+        ServiceVersion: "v1.0.0",
+        Environment:    "dev",
+    })
+    if err != nil {
+        log.Fatalf("init telemetry: %v", err)
+    }
+    defer shutdown(context.Background())
+
+    // ... construct providers/agents/sessions/etc.
+}
+```
+
+- Set `OTEL_EXPORTER_OTLP_ENDPOINT` to send traces to your collector; if the variable is empty the framework falls back to a pretty-printed stdout exporter.
+- Logs include `service` and `component` fields so log collectors can correlate them with spans using the trace/span IDs emitted by your OpenTelemetry backend.
+- The instrumentation is already wired into the agent runtime, the agentic RAG pipeline, retriever/indexing paths, session manager operations, and the runtime executor—no extra wiring is needed once telemetry is initialized.
+- See `examples/telemetry` for a runnable sample that initializes telemetry, wires a mock LLM provider, and demonstrates the logs/traces emitted by a single agent run.
 
 ### MCP Integration
 

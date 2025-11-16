@@ -9,8 +9,12 @@ import (
 	"github.com/sweetpotato0/ai-allin/agent"
 	"github.com/sweetpotato0/ai-allin/graph"
 	"github.com/sweetpotato0/ai-allin/pkg/logging"
+	"github.com/sweetpotato0/ai-allin/pkg/telemetry"
 	"github.com/sweetpotato0/ai-allin/rag/document"
 	"github.com/sweetpotato0/ai-allin/vector"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	oteltrace "go.opentelemetry.io/otel/trace"
 )
 
 const ragStateKey = "__agentic_rag_state"
@@ -42,6 +46,8 @@ type Pipeline struct {
 	graph      *graph.Graph
 	logger     *slog.Logger
 }
+
+var pipelineTracer = otel.Tracer("github.com/sweetpotato0/ai-allin/rag/agentic/pipeline")
 
 type pipelineState struct {
 	Question string          // Original user question
@@ -126,8 +132,16 @@ func pickClient(primary, fallback agent.LLMClient) agent.LLMClient {
 
 // Run executes the pipeline for a new question.
 func (p *Pipeline) Run(ctx context.Context, question string) (*Response, error) {
+	ctx, span := pipelineTracer.Start(ctx, "Pipeline.Run",
+		oteltrace.WithAttributes(
+			attribute.String("pipeline.name", p.cfg.Name),
+			attribute.String("question.preview", trimForLog(question, 96)),
+		))
+	var spanErr error
+	defer func() { telemetry.End(span, spanErr) }()
 	if strings.TrimSpace(question) == "" {
-		return nil, fmt.Errorf("question cannot be empty")
+		spanErr = fmt.Errorf("question cannot be empty")
+		return nil, spanErr
 	}
 	p.logger.Info("pipeline run started", "question", trimForLog(question, 120))
 
@@ -139,11 +153,13 @@ func (p *Pipeline) Run(ctx context.Context, question string) (*Response, error) 
 
 	finalState, err := p.graph.Execute(ctx, initial)
 	if err != nil {
+		spanErr = err
 		return nil, err
 	}
 
 	state, err := getState(finalState)
 	if err != nil {
+		spanErr = err
 		return nil, err
 	}
 
@@ -167,6 +183,11 @@ func (p *Pipeline) Run(ctx context.Context, question string) (*Response, error) 
 		"plan_steps", planSteps,
 		"evidence_count", len(resp.Evidence),
 		"critic", state.Critic != nil,
+	)
+	span.SetAttributes(
+		attribute.Int("plan.steps", planSteps),
+		attribute.Int("evidence.count", len(resp.Evidence)),
+		attribute.Bool("critic.enabled", state.Critic != nil),
 	)
 	return resp, nil
 }
@@ -216,28 +237,39 @@ func (p *Pipeline) startNode(ctx context.Context, state graph.State) (graph.Stat
 }
 
 func (p *Pipeline) planNode(ctx context.Context, state graph.State) (graph.State, error) {
+	ctx, span := pipelineTracer.Start(ctx, "Pipeline.Plan")
+	var spanErr error
+	defer func() { telemetry.End(span, spanErr) }()
 	st, err := getState(state)
 	if err != nil {
+		spanErr = err
 		return state, err
 	}
 
 	plan, err := p.planner.Plan(ctx, st.Question)
 	if err != nil {
 		p.logger.Error("planner failed", "error", err)
+		spanErr = err
 		return state, err
 	}
 	st.Plan = plan
+	span.SetAttributes(attribute.Int("plan.steps", len(plan.Steps)))
 	p.logger.Info("plan generated", "steps", len(plan.Steps))
 	return state, nil
 }
 
 func (p *Pipeline) researchNode(ctx context.Context, state graph.State) (graph.State, error) {
+	ctx, span := pipelineTracer.Start(ctx, "Pipeline.Research")
+	var spanErr error
+	defer func() { telemetry.End(span, spanErr) }()
 	st, err := getState(state)
 	if err != nil {
+		spanErr = err
 		return state, err
 	}
 	if st.Plan == nil {
-		return state, fmt.Errorf("plan not available for research node")
+		spanErr = fmt.Errorf("plan not available for research node")
+		return state, spanErr
 	}
 
 	collected := make([]Evidence, 0)
@@ -251,13 +283,16 @@ func (p *Pipeline) researchNode(ctx context.Context, state graph.State) (graph.S
 		p.logger.Debug("research step started", "step", step.ID, "goal", trimForLog(step.Goal, 80))
 		queries, err := p.researcher.buildQueries(ctx, st.Question, step)
 		if err != nil {
+			spanErr = err
 			p.logger.Error("query generation failed", "step", step.ID, "error", err)
 			return state, err
 		}
 		p.logger.Debug("queries generated", "step", step.ID, "count", len(queries))
+		span.AddEvent("queries_generated", oteltrace.WithAttributes(attribute.String("step", step.ID), attribute.Int("count", len(queries))))
 		for _, q := range queries {
 			results, err := p.retrieval.Search(ctx, q)
 			if err != nil {
+				spanErr = err
 				p.logger.Error("vector search failed", "step", step.ID, "error", err)
 				return state, fmt.Errorf("vector search failed: %w", err)
 			}
@@ -291,13 +326,18 @@ func (p *Pipeline) researchNode(ctx context.Context, state graph.State) (graph.S
 	}
 
 	st.Evidence = collected
+	span.SetAttributes(attribute.Int("evidence.count", len(collected)))
 	p.logger.Info("research completed", "evidence_count", len(collected))
 	return state, nil
 }
 
 func (p *Pipeline) synthesizeNode(ctx context.Context, state graph.State) (graph.State, error) {
+	ctx, span := pipelineTracer.Start(ctx, "Pipeline.Synthesis")
+	var spanErr error
+	defer func() { telemetry.End(span, spanErr) }()
 	st, err := getState(state)
 	if err != nil {
+		spanErr = err
 		return state, err
 	}
 	required := p.cfg.MinEvidenceCount
@@ -305,6 +345,10 @@ func (p *Pipeline) synthesizeNode(ctx context.Context, state graph.State) (graph
 		required = 0
 	}
 	p.logger.Info("synthesis started", "evidence_count", len(st.Evidence), "required", required)
+	span.SetAttributes(
+		attribute.Int("evidence.count", len(st.Evidence)),
+		attribute.Int("evidence.required", required),
+	)
 	if len(st.Evidence) < required {
 		fallback := strings.TrimSpace(p.cfg.NoAnswerMessage)
 		if fallback == "" {
@@ -312,14 +356,17 @@ func (p *Pipeline) synthesizeNode(ctx context.Context, state graph.State) (graph
 		}
 		st.Draft = fallback
 		p.logger.Warn("not enough evidence for synthesis", "have", len(st.Evidence), "required", required)
+		span.AddEvent("insufficient_evidence")
 		return state, nil
 	}
 	draft, err := p.writer.Compose(ctx, st.Question, st.Plan, st.Evidence)
 	if err != nil {
+		spanErr = err
 		p.logger.Error("synthesis failed", "error", err)
 		return state, err
 	}
 	st.Draft = draft
+	span.SetAttributes(attribute.Int("draft.length", len(draft)))
 	p.logger.Info("draft synthesis completed", "draft_length", len(draft))
 	return state, nil
 }
@@ -334,8 +381,12 @@ func (p *Pipeline) criticGate(ctx context.Context, state graph.State) (string, e
 }
 
 func (p *Pipeline) criticNode(ctx context.Context, state graph.State) (graph.State, error) {
+	ctx, span := pipelineTracer.Start(ctx, "Pipeline.Critic")
+	var spanErr error
+	defer func() { telemetry.End(span, spanErr) }()
 	st, err := getState(state)
 	if err != nil {
+		spanErr = err
 		return state, err
 	}
 	if p.critic == nil {
@@ -344,11 +395,13 @@ func (p *Pipeline) criticNode(ctx context.Context, state graph.State) (graph.Sta
 	p.logger.Info("critic review started")
 	feedback, err := p.critic.Review(ctx, st.Question, st.Draft, st.Plan, st.Evidence)
 	if err != nil {
+		spanErr = err
 		p.logger.Error("critic review failed", "error", err)
 		return state, err
 	}
 	st.Critic = feedback
 	if feedback != nil {
+		span.SetAttributes(attribute.String("critic.verdict", string(feedback.Verdict)))
 		p.logger.Info("critic review completed", "verdict", feedback.Verdict)
 	}
 	return state, nil

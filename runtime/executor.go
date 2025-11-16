@@ -9,6 +9,9 @@ import (
 	"github.com/sweetpotato0/ai-allin/agent"
 	"github.com/sweetpotato0/ai-allin/message"
 	"github.com/sweetpotato0/ai-allin/pkg/logging"
+	"github.com/sweetpotato0/ai-allin/pkg/telemetry"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
 )
 
 // Request captures the inputs required to execute a turn.
@@ -39,6 +42,8 @@ type AgentExecutor struct {
 	logger    *slog.Logger
 }
 
+var executorTracer = otel.Tracer("github.com/sweetpotato0/ai-allin/runtime/executor")
+
 // NewAgentExecutor constructs a new runtime executor backed by a prototype agent.
 func NewAgentExecutor(prototype *agent.Agent) *AgentExecutor {
 	if prototype == nil {
@@ -52,12 +57,18 @@ func NewAgentExecutor(prototype *agent.Agent) *AgentExecutor {
 
 // Execute runs the underlying agent using the provided request and conversation history.
 func (e *AgentExecutor) Execute(ctx context.Context, req *Request) (*TurnResult, error) {
+	ctx, span := executorTracer.Start(ctx, "AgentExecutor.Execute")
+	var spanErr error
+	defer func() { telemetry.End(span, spanErr) }()
 	if req == nil {
-		return nil, fmt.Errorf("runtime: request cannot be nil")
+		spanErr = fmt.Errorf("runtime: request cannot be nil")
+		return nil, spanErr
 	}
 	if req.Input == "" {
-		return nil, fmt.Errorf("runtime: input cannot be empty")
+		spanErr = fmt.Errorf("runtime: input cannot be empty")
+		return nil, spanErr
 	}
+	span.SetAttributes(attribute.String("session.id", req.SessionID))
 
 	runner := e.prototype.Clone()
 	if len(req.History) > 0 {
@@ -73,12 +84,14 @@ func (e *AgentExecutor) Execute(ctx context.Context, req *Request) (*TurnResult,
 		if e.logger != nil {
 			e.logger.Error("executor run failed", "session_id", req.SessionID, "error", err)
 		}
+		spanErr = err
 		return nil, err
 	}
 	duration := time.Since(start)
 	if e.logger != nil {
 		e.logger.Info("executor run completed", "session_id", req.SessionID, "duration_ms", duration.Milliseconds())
 	}
+	span.SetAttributes(attribute.Int64("duration_ms", duration.Milliseconds()))
 
 	messages := message.CloneMessages(runner.GetMessages())
 	var last *message.Message

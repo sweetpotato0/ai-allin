@@ -9,6 +9,7 @@ import (
 	"sync"
 
 	"github.com/sweetpotato0/ai-allin/pkg/logging"
+	"github.com/sweetpotato0/ai-allin/pkg/telemetry"
 	"github.com/sweetpotato0/ai-allin/rag/chunking"
 	"github.com/sweetpotato0/ai-allin/rag/document"
 	"github.com/sweetpotato0/ai-allin/rag/embedder"
@@ -16,6 +17,9 @@ import (
 	"github.com/sweetpotato0/ai-allin/rag/retriever"
 	"github.com/sweetpotato0/ai-allin/rag/tokenizer"
 	"github.com/sweetpotato0/ai-allin/vector"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	oteltrace "go.opentelemetry.io/otel/trace"
 )
 
 // RetrievalResult captures a single chunk returned from the retrieval stage.
@@ -43,7 +47,13 @@ type defaultRetrieval struct {
 	logger   *slog.Logger
 }
 
+var agenticRetrievalTracer = otel.Tracer("github.com/sweetpotato0/ai-allin/rag/agentic/retrieval")
+
 func (d *defaultRetrieval) IndexDocuments(ctx context.Context, docs ...document.Document) error {
+	ctx, span := agenticRetrievalTracer.Start(ctx, "DefaultRetrieval.IndexDocuments",
+		oteltrace.WithAttributes(attribute.Int("docs.count", len(docs))))
+	var spanErr error
+	defer func() { telemetry.End(span, spanErr) }()
 	if d.logger != nil {
 		d.logger.Info("default retrieval indexing documents", "count", len(docs))
 	}
@@ -51,6 +61,7 @@ func (d *defaultRetrieval) IndexDocuments(ctx context.Context, docs ...document.
 		if d.logger != nil {
 			d.logger.Error("base retriever index failed", "error", err)
 		}
+		spanErr = err
 		return err
 	}
 	d.keywords.add(docs...)
@@ -58,6 +69,10 @@ func (d *defaultRetrieval) IndexDocuments(ctx context.Context, docs ...document.
 }
 
 func (d *defaultRetrieval) Search(ctx context.Context, query string) ([]RetrievalResult, error) {
+	ctx, span := agenticRetrievalTracer.Start(ctx, "DefaultRetrieval.Search",
+		oteltrace.WithAttributes(attribute.String("query", trimLogString(query, 80))))
+	var spanErr error
+	defer func() { telemetry.End(span, spanErr) }()
 	if d.logger != nil {
 		d.logger.Debug("default retrieval search started", "query", trimLogString(query, 80))
 	}
@@ -66,6 +81,7 @@ func (d *defaultRetrieval) Search(ctx context.Context, query string) ([]Retrieva
 		if d.logger != nil {
 			d.logger.Error("base retrieval search failed", "error", err)
 		}
+		spanErr = err
 		return nil, err
 	}
 	out := make([]RetrievalResult, 0, len(results))
@@ -95,6 +111,7 @@ func (d *defaultRetrieval) Search(ctx context.Context, query string) ([]Retrieva
 	if d.logger != nil {
 		d.logger.Debug("default retrieval search completed", "query", trimLogString(query, 80), "hits", len(out))
 	}
+	span.SetAttributes(attribute.Int("results.count", len(out)))
 	return out, nil
 }
 

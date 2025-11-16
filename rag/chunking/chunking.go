@@ -209,10 +209,3 @@ func mergeTinyChunks(chunks []document.Chunk, minTokens int) []document.Chunk {
 	}
 	return out
 }
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}

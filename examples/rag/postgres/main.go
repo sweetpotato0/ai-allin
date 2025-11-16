@@ -15,6 +15,7 @@ import (
 	"github.com/sweetpotato0/ai-allin/contrib/provider/openai"
 	"github.com/sweetpotato0/ai-allin/contrib/tokenizer/tiktoken"
 	pgvector "github.com/sweetpotato0/ai-allin/contrib/vector/pg"
+	"github.com/sweetpotato0/ai-allin/pkg/telemetry"
 	"github.com/sweetpotato0/ai-allin/rag/agentic"
 )
 
@@ -38,6 +39,18 @@ const (
 )
 
 func main() {
+	ctx := context.Background()
+
+	shutdown, err := telemetry.Init(ctx, telemetry.Config{
+		ServiceName:    "ai-allin-example",
+		ServiceVersion: "v0.1.0",
+		Environment:    "example",
+	})
+	if err != nil {
+		log.Fatalf("init telemetry: %v", err)
+	}
+	defer shutdown(context.Background())
+
 	var (
 		question    = flag.String("question", defaultQuestion, "Question to ask the RAG pipeline")
 		docsDir     = flag.String("docs", defaultDocsDir, "Directory containing markdown docs to index")
@@ -51,8 +64,6 @@ func main() {
 	if strings.TrimSpace(apiKey) == "" {
 		log.Fatalf("%s is required", envOpenAIKey)
 	}
-
-	ctx := context.Background()
 
 	embedder := openai_embedder.New(apiKey, os.Getenv(envOpenAIBaseURL), embeddingModel, embeddingDimensions)
 	pgStore, err := newPGStore(*table, embedder.Dimension())

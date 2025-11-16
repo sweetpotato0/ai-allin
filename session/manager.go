@@ -9,6 +9,10 @@ import (
 
 	"github.com/sweetpotato0/ai-allin/agent"
 	"github.com/sweetpotato0/ai-allin/pkg/logging"
+	"github.com/sweetpotato0/ai-allin/pkg/telemetry"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	oteltrace "go.opentelemetry.io/otel/trace"
 )
 
 // Store defines the interface for session storage backends that operate on
@@ -35,6 +39,8 @@ type Manager struct {
 	sessionAgents map[string]*agent.Agent
 	logger        *slog.Logger
 }
+
+var sessionTracer = otel.Tracer("github.com/sweetpotato0/ai-allin/session/manager")
 
 // Option is a function that configures a Manager.
 type Option func(*Manager)
@@ -90,6 +96,10 @@ func NewManagerWithStore(s Store) *Manager {
 
 // Create creates a new single-agent session.
 func (m *Manager) Create(ctx context.Context, id string, ag *agent.Agent) (*SingleAgentSession, error) {
+	ctx, span := sessionTracer.Start(ctx, "SessionManager.Create",
+		oteltrace.WithAttributes(attribute.String("session.id", id)))
+	var spanErr error
+	defer func() { telemetry.End(span, spanErr) }()
 	if m.logger != nil {
 		m.logger.Info("creating single-agent session", "id", id)
 	}
@@ -100,6 +110,7 @@ func (m *Manager) Create(ctx context.Context, id string, ag *agent.Agent) (*Sing
 		if m.logger != nil {
 			m.logger.Error("create session ensure store failed", "id", id, "error", err)
 		}
+		spanErr = err
 		return nil, err
 	}
 
@@ -108,13 +119,15 @@ func (m *Manager) Create(ctx context.Context, id string, ag *agent.Agent) (*Sing
 		if m.logger != nil {
 			m.logger.Error("create session existence check failed", "id", id, "error", err)
 		}
-		return nil, fmt.Errorf("failed to check session existence: %w", err)
+		spanErr = fmt.Errorf("failed to check session existence: %w", err)
+		return nil, spanErr
 	}
 	if exists {
 		if m.logger != nil {
 			m.logger.Warn("create session aborted; already exists", "id", id)
 		}
-		return nil, fmt.Errorf("session %s already exists", id)
+		spanErr = fmt.Errorf("session %s already exists", id)
+		return nil, spanErr
 	}
 
 	sess := New(id, ag)
@@ -122,18 +135,24 @@ func (m *Manager) Create(ctx context.Context, id string, ag *agent.Agent) (*Sing
 		if m.logger != nil {
 			m.logger.Error("create session persist failed", "id", id, "error", err)
 		}
-		return nil, fmt.Errorf("failed to save session: %w", err)
+		spanErr = fmt.Errorf("failed to save session: %w", err)
+		return nil, spanErr
 	}
 
 	m.storeSessionLocked(sess)
 	if m.logger != nil {
 		m.logger.Info("single-agent session created", "id", id)
 	}
+	span.SetAttributes(attribute.String("session.type", "single"))
 	return sess, nil
 }
 
 // CreateShared creates a new shared (multi-agent) session.
 func (m *Manager) CreateShared(ctx context.Context, id string) (*SharedSession, error) {
+	ctx, span := sessionTracer.Start(ctx, "SessionManager.CreateShared",
+		oteltrace.WithAttributes(attribute.String("session.id", id)))
+	var spanErr error
+	defer func() { telemetry.End(span, spanErr) }()
 	if m.logger != nil {
 		m.logger.Info("creating shared session", "id", id)
 	}
@@ -144,6 +163,7 @@ func (m *Manager) CreateShared(ctx context.Context, id string) (*SharedSession, 
 		if m.logger != nil {
 			m.logger.Error("create shared ensure store failed", "id", id, "error", err)
 		}
+		spanErr = err
 		return nil, err
 	}
 
@@ -152,13 +172,15 @@ func (m *Manager) CreateShared(ctx context.Context, id string) (*SharedSession, 
 		if m.logger != nil {
 			m.logger.Error("create shared existence check failed", "id", id, "error", err)
 		}
-		return nil, fmt.Errorf("failed to check session existence: %w", err)
+		spanErr = fmt.Errorf("failed to check session existence: %w", err)
+		return nil, spanErr
 	}
 	if exists {
 		if m.logger != nil {
 			m.logger.Warn("create shared aborted; already exists", "id", id)
 		}
-		return nil, fmt.Errorf("session %s already exists", id)
+		spanErr = fmt.Errorf("session %s already exists", id)
+		return nil, spanErr
 	}
 
 	sess := NewShared(id)
@@ -166,18 +188,24 @@ func (m *Manager) CreateShared(ctx context.Context, id string) (*SharedSession, 
 		if m.logger != nil {
 			m.logger.Error("create shared persist failed", "id", id, "error", err)
 		}
-		return nil, fmt.Errorf("failed to save session: %w", err)
+		spanErr = fmt.Errorf("failed to save session: %w", err)
+		return nil, spanErr
 	}
 
 	m.storeSessionLocked(sess)
 	if m.logger != nil {
 		m.logger.Info("shared session created", "id", id)
 	}
+	span.SetAttributes(attribute.String("session.type", "shared"))
 	return sess, nil
 }
 
 // Get retrieves a session by ID.
 func (m *Manager) Get(ctx context.Context, id string) (Session, error) {
+	ctx, span := sessionTracer.Start(ctx, "SessionManager.Get",
+		oteltrace.WithAttributes(attribute.String("session.id", id)))
+	var spanErr error
+	defer func() { telemetry.End(span, spanErr) }()
 	if m.logger != nil {
 		m.logger.Info("loading session", "id", id)
 	}
@@ -202,6 +230,7 @@ func (m *Manager) Get(ctx context.Context, id string) (Session, error) {
 		if m.logger != nil {
 			m.logger.Error("get session ensure store failed", "id", id, "error", err)
 		}
+		spanErr = err
 		return nil, err
 	}
 
@@ -210,6 +239,7 @@ func (m *Manager) Get(ctx context.Context, id string) (Session, error) {
 		if m.logger != nil {
 			m.logger.Error("get session load failed", "id", id, "error", err)
 		}
+		spanErr = err
 		return nil, err
 	}
 
@@ -218,6 +248,7 @@ func (m *Manager) Get(ctx context.Context, id string) (Session, error) {
 		if m.logger != nil {
 			m.logger.Error("get session instantiate failed", "id", id, "error", err)
 		}
+		spanErr = err
 		return nil, err
 	}
 
@@ -225,11 +256,16 @@ func (m *Manager) Get(ctx context.Context, id string) (Session, error) {
 	if m.logger != nil {
 		m.logger.Info("session loaded", "id", id)
 	}
+	span.SetAttributes(attribute.String("session.type", string(record.Type)))
 	return sess, nil
 }
 
 // GetOrCreate retrieves a session by ID or creates a new single-agent session if it doesn't exist.
 func (m *Manager) GetOrCreate(ctx context.Context, id string, ag *agent.Agent) (*SingleAgentSession, error) {
+	ctx, span := sessionTracer.Start(ctx, "SessionManager.GetOrCreate",
+		oteltrace.WithAttributes(attribute.String("session.id", id)))
+	var spanErr error
+	defer func() { telemetry.End(span, spanErr) }()
 	if m.logger != nil {
 		m.logger.Info("get or create single session", "id", id)
 	}
@@ -255,6 +291,7 @@ func (m *Manager) GetOrCreate(ctx context.Context, id string, ag *agent.Agent) (
 		if m.logger != nil {
 			m.logger.Error("get or create single ensure store failed", "id", id, "error", err)
 		}
+		spanErr = err
 		return nil, err
 	}
 
@@ -270,6 +307,7 @@ func (m *Manager) GetOrCreate(ctx context.Context, id string, ag *agent.Agent) (
 				if m.logger != nil {
 					m.logger.Info("rehydrated existing single session", "id", id)
 				}
+				span.SetAttributes(attribute.String("session.type", "single"))
 				return single, nil
 			}
 		}
@@ -280,7 +318,8 @@ func (m *Manager) GetOrCreate(ctx context.Context, id string, ag *agent.Agent) (
 			if m.logger != nil {
 				m.logger.Error("persist fallback single session failed", "id", newID, "error", err)
 			}
-			return nil, fmt.Errorf("failed to save session: %w", err)
+			spanErr = fmt.Errorf("failed to save session: %w", err)
+			return nil, spanErr
 		}
 		m.storeSessionLocked(s)
 		if m.logger != nil {
@@ -294,17 +333,23 @@ func (m *Manager) GetOrCreate(ctx context.Context, id string, ag *agent.Agent) (
 		if m.logger != nil {
 			m.logger.Error("persist new single session failed", "id", id, "error", err)
 		}
-		return nil, fmt.Errorf("failed to save session: %w", err)
+		spanErr = fmt.Errorf("failed to save session: %w", err)
+		return nil, spanErr
 	}
 	m.storeSessionLocked(s)
 	if m.logger != nil {
 		m.logger.Info("created new single session", "id", id)
 	}
+	span.SetAttributes(attribute.String("session.type", "single"))
 	return s, nil
 }
 
 // GetOrCreateShared retrieves a session by ID or creates a new shared session if it doesn't exist.
 func (m *Manager) GetOrCreateShared(ctx context.Context, id string) (*SharedSession, error) {
+	ctx, span := sessionTracer.Start(ctx, "SessionManager.GetOrCreateShared",
+		oteltrace.WithAttributes(attribute.String("session.id", id)))
+	var spanErr error
+	defer func() { telemetry.End(span, spanErr) }()
 	if m.logger != nil {
 		m.logger.Info("get or create shared session", "id", id)
 	}
@@ -330,6 +375,7 @@ func (m *Manager) GetOrCreateShared(ctx context.Context, id string) (*SharedSess
 		if m.logger != nil {
 			m.logger.Error("get or create shared ensure store failed", "id", id, "error", err)
 		}
+		spanErr = err
 		return nil, err
 	}
 
@@ -345,6 +391,7 @@ func (m *Manager) GetOrCreateShared(ctx context.Context, id string) (*SharedSess
 				if m.logger != nil {
 					m.logger.Info("rehydrated shared session", "id", id)
 				}
+				span.SetAttributes(attribute.String("session.type", "shared"))
 				return shared, nil
 			}
 		}
@@ -355,7 +402,8 @@ func (m *Manager) GetOrCreateShared(ctx context.Context, id string) (*SharedSess
 			if m.logger != nil {
 				m.logger.Error("persist fallback shared session failed", "id", newID, "error", err)
 			}
-			return nil, fmt.Errorf("failed to save session: %w", err)
+			spanErr = fmt.Errorf("failed to save session: %w", err)
+			return nil, spanErr
 		}
 		m.storeSessionLocked(s)
 		if m.logger != nil {
@@ -369,17 +417,23 @@ func (m *Manager) GetOrCreateShared(ctx context.Context, id string) (*SharedSess
 		if m.logger != nil {
 			m.logger.Error("persist shared session failed", "id", id, "error", err)
 		}
-		return nil, fmt.Errorf("failed to save session: %w", err)
+		spanErr = fmt.Errorf("failed to save session: %w", err)
+		return nil, spanErr
 	}
 	m.storeSessionLocked(s)
 	if m.logger != nil {
 		m.logger.Info("created shared session", "id", id)
 	}
+	span.SetAttributes(attribute.String("session.type", "shared"))
 	return s, nil
 }
 
 // Delete removes a session.
 func (m *Manager) Delete(ctx context.Context, id string) error {
+	ctx, span := sessionTracer.Start(ctx, "SessionManager.Delete",
+		oteltrace.WithAttributes(attribute.String("session.id", id)))
+	var spanErr error
+	defer func() { telemetry.End(span, spanErr) }()
 	if m.logger != nil {
 		m.logger.Warn("deleting session", "id", id)
 	}
@@ -396,12 +450,14 @@ func (m *Manager) Delete(ctx context.Context, id string) error {
 		if m.logger != nil {
 			m.logger.Error("delete session ensure store failed", "id", id, "error", err)
 		}
+		spanErr = err
 		return err
 	}
 	if err := m.store.Delete(ctx, id); err != nil {
 		if m.logger != nil {
 			m.logger.Error("delete session failed", "id", id, "error", err)
 		}
+		spanErr = err
 		return err
 	}
 	if m.logger != nil {
@@ -412,10 +468,14 @@ func (m *Manager) Delete(ctx context.Context, id string) error {
 
 // List returns all session IDs.
 func (m *Manager) List(ctx context.Context) ([]string, error) {
+	ctx, span := sessionTracer.Start(ctx, "SessionManager.List")
+	var spanErr error
+	defer func() { telemetry.End(span, spanErr) }()
 	if err := m.ensureStore(); err != nil {
 		if m.logger != nil {
 			m.logger.Error("list sessions ensure store failed", "error", err)
 		}
+		spanErr = err
 		return nil, err
 	}
 	ids, err := m.store.List(ctx)
@@ -423,20 +483,26 @@ func (m *Manager) List(ctx context.Context) ([]string, error) {
 		if m.logger != nil {
 			m.logger.Error("list sessions failed", "error", err)
 		}
+		spanErr = err
 		return nil, err
 	}
 	if m.logger != nil {
 		m.logger.Info("listed sessions", "count", len(ids))
 	}
+	span.SetAttributes(attribute.Int("sessions.count", len(ids)))
 	return ids, nil
 }
 
 // Count returns the number of active sessions.
 func (m *Manager) Count(ctx context.Context) (int, error) {
+	ctx, span := sessionTracer.Start(ctx, "SessionManager.Count")
+	var spanErr error
+	defer func() { telemetry.End(span, spanErr) }()
 	if err := m.ensureStore(); err != nil {
 		if m.logger != nil {
 			m.logger.Error("count sessions ensure store failed", "error", err)
 		}
+		spanErr = err
 		return 0, err
 	}
 	count, err := m.store.Count(ctx)
@@ -444,20 +510,26 @@ func (m *Manager) Count(ctx context.Context) (int, error) {
 		if m.logger != nil {
 			m.logger.Error("count sessions failed", "error", err)
 		}
+		spanErr = err
 		return 0, err
 	}
 	if m.logger != nil {
 		m.logger.Info("counted sessions", "count", count)
 	}
+	span.SetAttributes(attribute.Int("sessions.count", count))
 	return count, nil
 }
 
 // CleanupInactive removes inactive sessions older than the specified duration.
 func (m *Manager) CleanupInactive(ctx context.Context, _ time.Duration) (int, error) {
+	ctx, span := sessionTracer.Start(ctx, "SessionManager.CleanupInactive")
+	var spanErr error
+	defer func() { telemetry.End(span, spanErr) }()
 	if err := m.ensureStore(); err != nil {
 		if m.logger != nil {
 			m.logger.Error("cleanup inactive ensure store failed", "error", err)
 		}
+		spanErr = err
 		return 0, err
 	}
 
@@ -466,6 +538,7 @@ func (m *Manager) CleanupInactive(ctx context.Context, _ time.Duration) (int, er
 		if m.logger != nil {
 			m.logger.Error("cleanup inactive list failed", "error", err)
 		}
+		spanErr = err
 		return 0, err
 	}
 
@@ -489,27 +562,36 @@ func (m *Manager) CleanupInactive(ctx context.Context, _ time.Duration) (int, er
 				if m.logger != nil {
 					m.logger.Info("cleaned inactive session", "id", id)
 				}
+			} else {
+				span.AddEvent("cleanup_delete_failed", oteltrace.WithAttributes(attribute.String("session.id", id), attribute.String("error", err.Error())))
 			}
 		}
 	}
 	if m.logger != nil {
 		m.logger.Info("cleanup inactive completed", "removed", count)
 	}
+	span.SetAttributes(attribute.Int("sessions.removed", count), attribute.Int("sessions.scanned", len(ids)))
 	return count, nil
 }
 
 // Save saves a session to the store.
 func (m *Manager) Save(ctx context.Context, sess Session) error {
+	ctx, span := sessionTracer.Start(ctx, "SessionManager.Save",
+		oteltrace.WithAttributes(attribute.String("session.id", sess.ID())))
+	var spanErr error
+	defer func() { telemetry.End(span, spanErr) }()
 	if err := m.ensureStore(); err != nil {
 		if m.logger != nil {
 			m.logger.Error("save session ensure store failed", "id", sess.ID(), "error", err)
 		}
+		spanErr = err
 		return err
 	}
 	if err := m.store.Save(ctx, sess.Snapshot()); err != nil {
 		if m.logger != nil {
 			m.logger.Error("save session failed", "id", sess.ID(), "error", err)
 		}
+		spanErr = err
 		return err
 	}
 	if m.logger != nil {

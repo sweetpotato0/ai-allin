@@ -11,9 +11,13 @@ import (
 	"github.com/sweetpotato0/ai-allin/message"
 	"github.com/sweetpotato0/ai-allin/middleware"
 	"github.com/sweetpotato0/ai-allin/pkg/logging"
+	"github.com/sweetpotato0/ai-allin/pkg/telemetry"
 	"github.com/sweetpotato0/ai-allin/prompt"
 	runtimeprovider "github.com/sweetpotato0/ai-allin/runtime/provider"
 	"github.com/sweetpotato0/ai-allin/tool"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	oteltrace "go.opentelemetry.io/otel/trace"
 )
 
 // LLMClient defines the interface for LLM providers
@@ -48,6 +52,8 @@ type Agent struct {
 	toolSupervisor *runtimeprovider.ToolSupervisor
 	logger         *slog.Logger
 }
+
+var agentTracer = otel.Tracer("github.com/sweetpotato0/ai-allin/agent")
 
 // Option is a function that configures an Agent
 type Option func(*Agent)
@@ -272,6 +278,15 @@ func (a *Agent) RestoreMessages(messages []*message.Message) {
 
 // Run executes the agent with the given input
 func (a *Agent) Run(ctx context.Context, input string) (*message.Message, error) {
+	ctx, span := agentTracer.Start(ctx, "Agent.Run",
+		oteltrace.WithAttributes(
+			attribute.String("agent.name", a.name),
+			attribute.Int("agent.max_iterations", a.maxIterations),
+			attribute.String("agent.input_preview", trimLogText(input, 96)),
+		))
+	var spanErr error
+	defer func() { telemetry.End(span, spanErr) }()
+
 	if a.logger != nil {
 		a.logger.Info("agent run started", "input", trimLogText(input, 160))
 	}
@@ -279,45 +294,45 @@ func (a *Agent) Run(ctx context.Context, input string) (*message.Message, error)
 		if a.logger != nil {
 			a.logger.Error("tool provider refresh failed", "error", err)
 		}
+		spanErr = err
 		return nil, err
 	}
 
-	// Create middleware context
 	mwCtx := middleware.NewContext(ctx)
 	mwCtx.Input = input
 
-	// Execute with middleware chain
 	err := a.middlewares.Execute(mwCtx, func(mwCtx *middleware.Context) error {
-		// Add user message
 		userMsg := message.NewMessage(message.RoleUser, input)
 		a.AddMessage(userMsg)
 		mwCtx.Messages = a.GetMessages()
 
-		// Search relevant memories if enabled
 		if a.enableMemory && a.memory != nil {
 			memories, err := a.memory.SearchMemory(mwCtx.Context(), input)
 			if err == nil && len(memories) > 0 {
 				if a.logger != nil {
 					a.logger.Debug("memory hits found", "count", len(memories))
 				}
-				// Add memories as context (simplified)
+				span.AddEvent("memory_hits", oteltrace.WithAttributes(attribute.Int("count", len(memories))))
 				memoryContext := "Relevant memories:\n"
 				for _, mem := range memories {
 					memoryContext += fmt.Sprintf("- %v\n", mem)
 				}
 				contextMsg := message.NewMessage(message.RoleSystem, memoryContext)
 				a.ctx.AddMessage(contextMsg)
-			} else if err != nil && a.logger != nil {
-				a.logger.Warn("memory search failed", "error", err)
+			} else if err != nil {
+				if a.logger != nil {
+					a.logger.Warn("memory search failed", "error", err)
+				}
+				span.AddEvent("memory_search_failed", oteltrace.WithAttributes(attribute.String("error", err.Error())))
 			}
 		}
 
-		// Execution loop with tool calls
 		for i := 0; i < a.maxIterations; i++ {
 			if a.logger != nil {
 				a.logger.Debug("llm turn started", "iteration", i+1)
 			}
-			// Get tool schemas if enabled
+			span.AddEvent("agent_iteration", oteltrace.WithAttributes(attribute.Int("iteration", i+1)))
+
 			var toolSchemas []map[string]any
 			if a.enableTools {
 				toolSchemas = a.tools.ToJSONSchemas()
@@ -326,7 +341,6 @@ func (a *Agent) Run(ctx context.Context, input string) (*message.Message, error)
 				}
 			}
 
-			// Call LLM
 			req := &GenerateRequest{
 				Messages: a.ctx.GetMessages(),
 				Tools:    toolSchemas,
@@ -342,11 +356,8 @@ func (a *Agent) Run(ctx context.Context, input string) (*message.Message, error)
 			a.AddMessage(resp.Message)
 			mwCtx.Response = resp.Message
 
-			// Check if there are tool calls
 			if len(resp.Message.ToolCalls) == 0 {
-				// No tool calls, return the response
 				if a.enableMemory && a.memory != nil {
-					// Store conversation in memory
 					conversationContent := fmt.Sprintf("User: %s\nAssistant: %s", input, resp.Message.Text())
 					mem := &memory.Memory{
 						ID:       memory.GenerateMemoryID(),
@@ -361,25 +372,27 @@ func (a *Agent) Run(ctx context.Context, input string) (*message.Message, error)
 				return nil
 			}
 
-			// Execute tool calls
 			for _, toolCall := range resp.Message.ToolCalls {
 				if a.logger != nil {
 					a.logger.Info("executing tool call", "tool", toolCall.Name)
 				}
+				span.AddEvent("tool_call", oteltrace.WithAttributes(attribute.String("tool.name", toolCall.Name)))
 				result, err := a.tools.Execute(mwCtx.Context(), toolCall.Name, toolCall.Args)
 				if err != nil {
 					if a.logger != nil {
 						a.logger.Error("tool execution failed", "tool", toolCall.Name, "error", err)
 					}
+					span.AddEvent("tool_error",
+						oteltrace.WithAttributes(
+							attribute.String("tool.name", toolCall.Name),
+							attribute.String("error", err.Error()),
+						))
 					result = fmt.Sprintf("Error executing tool %s: %v", toolCall.Name, err)
 				}
 
-				// Add tool response
 				toolMsg := message.NewToolResponseMessage(toolCall.ID, result)
 				a.AddMessage(toolMsg)
 			}
-
-			// Continue loop to get final response
 		}
 
 		mwCtx.Error = fmt.Errorf("max iterations (%d) reached", a.maxIterations)
@@ -390,6 +403,7 @@ func (a *Agent) Run(ctx context.Context, input string) (*message.Message, error)
 		if a.logger != nil {
 			a.logger.Error("agent run failed", "error", err)
 		}
+		spanErr = err
 		return nil, err
 	}
 
@@ -403,13 +417,21 @@ func (a *Agent) Run(ctx context.Context, input string) (*message.Message, error)
 	if a.logger != nil {
 		a.logger.Error("agent run ended without response")
 	}
-	return nil, fmt.Errorf("no response generated")
+	spanErr = fmt.Errorf("no response generated")
+	return nil, spanErr
 }
 
 // Stream executes the agent with streaming responses
 func (a *Agent) Stream(ctx context.Context, input string, callback func(*message.Message) error) error {
 	// This is a placeholder for streaming implementation
 	// In a real implementation, this would stream tokens as they're generated
+	ctx, span := agentTracer.Start(ctx, "Agent.Stream",
+		oteltrace.WithAttributes(
+			attribute.String("agent.name", a.name),
+			attribute.String("input_preview", trimLogText(input, 96)),
+		))
+	var spanErr error
+	defer func() { telemetry.End(span, spanErr) }()
 	if a.logger != nil {
 		a.logger.Info("agent stream started", "input", trimLogText(input, 160))
 	}
@@ -418,12 +440,17 @@ func (a *Agent) Stream(ctx context.Context, input string, callback func(*message
 		if a.logger != nil {
 			a.logger.Error("agent stream failed", "error", err)
 		}
+		spanErr = err
 		return err
 	}
 	if a.logger != nil {
 		a.logger.Info("agent stream callback", "output", trimLogText(result.Text(), 160))
 	}
-	return callback(result)
+	if err := callback(result); err != nil {
+		spanErr = err
+		return err
+	}
+	return nil
 }
 
 // Clone creates a copy of the agent with the same configuration

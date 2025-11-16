@@ -314,12 +314,12 @@ func WithGraphMaxVisits(max int) Option {
 func defaultConfig() *Config {
 	cfg := &Config{
 		Name:             "agentic-rag",
-		MaxPlanSteps:     4,
+		MaxPlanSteps:     3,
 		EnableCritic:     true,
 		GraphMaxVisits:   20,
 		MinEvidenceCount: 1,
 		QueryLLMRetries:  2,
-		QueryMaxResults:  4,
+		QueryMaxResults:  3,
 		ChunkOverlap:     120,
 		PlannerPrompt: `You are the lead planner for an agentic RAG pipeline. Break the user question into at most {{max_steps}} sequential research steps that collect the evidence needed for a final answer. Output compact JSON only matching {"strategy":"...", "steps":[{"id":"step-1","goal":"...","questions":["..."],"expected_evidence":"...","downstream_support":"..."}]}.
 Planning rules:
